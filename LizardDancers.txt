@@ -1,0 +1,68 @@
+--@name LizardDancers
+--@author Sparky
+--@shared
+
+local radius = 300
+local spacing = 80 --How far apart they need to be
+local lizards = 50
+local music = "https://www.dropbox.com/s/u9qo6tlob94l9ri/Spongebob%20Jellyfish%20Jam%20Louder.mp3?raw=1"
+local animation = "taunt_dance"
+
+if SERVER then
+    local function randPos(postbl, size)
+        local poses = {}
+        local best, besti = 0, 1
+        for i=1, 50 do
+            local t = math.random()*math.pi*2
+            local r = math.sqrt(math.random())*size
+            local pos = Vector(math.cos(t)*r, math.sin(t)*r, 0)
+            local safe = true
+            local closest = math.huge
+            for k, v in ipairs(postbl) do
+                local d = v:getDistanceSqr(pos)
+                if d<spacing^2 then
+                    safe = false
+                end
+                if d<closest then
+                    closest = d
+                end
+            end
+            if safe then return pos end
+            if closest>best then
+                best = closest
+                besti = i
+            end
+            poses[i] = pos
+        end
+        return poses[besti]
+    end
+    
+    --Create dancing holograms
+    local model = "models/aeonpm/aeon.mdl"
+    local chipPos = chip():getPos()
+    local holos, postbl = {}, {}
+    for i=1, lizards do
+        local pos = randPos(postbl, radius)
+        local holo = holograms.create(chipPos+pos, Angle(0,math.random()*360,0), model)
+        for o=1, 7 do holo:setBodygroup(o, 1) end
+        holo:setAnimation(animation)
+        holos[i] = holo
+        postbl[i] = pos
+    end
+    timer.create("dance",holos[1]:getAnimationLength(),0,function()
+        for k, v in ipairs(holos) do v:setAnimation(animation) end
+    end)
+else
+    bass.loadURL(music,"3d noblock",function(snd, err, errtxt)
+        if snd then
+            snd:setFade(500,10000)
+            snd:setLooping(true)
+            --snd:setVolume(1)
+            hook.add("think","snd",function()
+                snd:setPos(chip():getPos())
+            end)
+        else
+            print(errtxt)
+        end
+    end)
+end
