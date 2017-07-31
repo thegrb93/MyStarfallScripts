@@ -1,0 +1,95 @@
+--@name RailBuilder
+--@author Sparky
+--@server
+
+-- Just put the chip down and build away.
+-- You can also add more models into this table below if you want. Each table inside of it is a table of attachment points.
+
+local data = {
+["models/xqm/rails/slope_up_15.mdl"] = {{pos=Vector(6,4.7683715820313e-07,-21.343319892883),ang=Angle(0,0,0)},{pos=Vector(-20.460075378418,-7.1525573730469e-07,-19.439616203308),ang=Angle(15,0,0)}},
+["models/xqm/rails/slope_down_90.mdl"] = {{pos=Vector(38,1.4305114746094e-06,11.323814868927),ang=Angle(0,0,0)},{pos=Vector(-11.272449970245,-4.7683715820313e-07,-38),ang=Angle(-90,0,0)}},
+["models/xqm/rails/twist_90_right.mdl"] = {{pos=Vector(6,4.7683715820313e-07,-21.343319892883),ang=Angle(0,0,0)},{pos=Vector(-186,-19.088697433472,-2.2546350955963),ang=Angle(0,0,-90)}},
+["models/xqm/rails/turn_15.mdl"] = {{pos=Vector(6,4.7683715820313e-07,-21.343319892883),ang=Angle(0,0,0)},{pos=Vector(-17.591094970703,3.1058288812637,-21.343319892883),ang=Angle(0,-15,0)}},
+["models/xqm/rails/twist_90_left.mdl"] = {{pos=Vector(6,4.7683715820313e-07,-21.343319892883),ang=Angle(0,0,0)},{pos=Vector(-186,19.088676452637,-2.2546248435974),ang=Angle(0,0,90)}},
+["models/xqm/rails/straight_2.mdl"] = {{pos=Vector(6,4.7683715820313e-07,-21.343319892883),ang=Angle(0,0,0)},{pos=Vector(-17.999990463257,-7.1525573730469e-07,-21.343319892883),ang=Angle(0,0,0)}},
+["models/xqm/rails/slope_down_15.mdl"] = {{pos=Vector(6,4.7683715820313e-07,-21.343319892883),ang=Angle(0,0,0)},{pos=Vector(-15.334579944611,-4.7683715820313e-07,-22.572239875793),ang=Angle(-15,0,0)}},
+["models/xqm/rails/turn_90.mdl"] = {{pos=Vector(6,4.7683715820313e-07,-21.343319892883),ang=Angle(0,0,0)},{pos=Vector(-58.841682434082,56.864627838135,-21.343319892883),ang=Angle(0,-90,0)}},
+["models/xqm/rails/turn_45.mdl"] = {{pos=Vector(6,4.7683715820313e-07,-21.343319892883),ang=Angle(0,0,0)},{pos=Vector(-38.197889328003,15.003158092499,-21.343319892883),ang=Angle(0,-45,0)}},
+["models/xqm/rails/turn_30.mdl"] = {{pos=Vector(6,4.7683715820313e-07,-21.343319892883),ang=Angle(0,0,0)},{pos=Vector(-28.677645683289,7.6980187892914,-21.343319892883),ang=Angle(0,-30,0)}},
+["models/xqm/rails/turn_180.mdl"] = {{pos=Vector(52.796615600586,45.423164367676,-21.343319892883),ang=Angle(0,90,0)},{pos=Vector(-52.796613693237,45.423156738281,-21.343319892883),ang=Angle(0,-90,0)}},
+["models/xqm/rails/tunnel_1.mdl"] = {{pos=Vector(6,4.7683715820313e-07,-21.343319892883),ang=Angle(0,0,0)},{pos=Vector(-5.9999897480011,-4.7683715820313e-07,-21.343319892883),ang=Angle(0,0,0)}},
+["models/xqm/rails/tunnel_8.mdl"] = {{pos=Vector(6,4.7683715820313e-07,-21.343319892883),ang=Angle(0,0,0)},{pos=Vector(-90,-3.814697265625e-06,-21.343319892883),ang=Angle(0,0,0)}},
+["models/xqm/rails/tunnel_4.mdl"] = {{pos=Vector(6,4.7683715820313e-07,-21.343319892883),ang=Angle(0,0,0)},{pos=Vector(-42,-2.1457672119141e-06,-21.343319892883),ang=Angle(0,0,0)}},
+["models/xqm/rails/tunnel_2.mdl"] = {{pos=Vector(6,4.7683715820313e-07,-21.343319892883),ang=Angle(0,0,0)},{pos=Vector(-18,-7.1525573730469e-07,-21.343319892883),ang=Angle(0,0,0)}},
+["models/xqm/rails/tunnel_16.mdl"] = {{pos=Vector(6,4.7683715820313e-07,-21.343319892883),ang=Angle(0,0,0)},{pos=Vector(-186,-8.1062316894531e-06,-21.343319892883),ang=Angle(0,0,0)}},
+["models/xqm/rails/slope_down_45.mdl"] = {{pos=Vector(6,4.7683715820313e-07,-21.343319892883),ang=Angle(0,0,0)},{pos=Vector(-28.645128250122,-1.1920928955078e-06,-30.497700691223),ang=Angle(-45,0,0)}},
+["models/xqm/rails/straight_8.mdl"] = {{pos=Vector(6,4.7683715820313e-07,-21.343319892883),ang=Angle(0,0,0)},{pos=Vector(-90,-3.814697265625e-06,-21.343319892883),ang=Angle(0,0,0)}},
+["models/xqm/rails/twist_45_left.mdl"] = {{pos=Vector(6,4.7683715820313e-07,-21.343319892883),ang=Angle(0,0,0)},{pos=Vector(-90,13.497736215591,-15.752370119095),ang=Angle(0,0,45)}},
+["models/xqm/rails/straight_16.mdl"] = {{pos=Vector(6,4.7683715820313e-07,-21.343319892883),ang=Angle(0,0,0)},{pos=Vector(-186,-8.1062316894531e-06,-21.343319892883),ang=Angle(0,0,0)}},
+["models/xqm/rails/slope_down_30.mdl"] = {{pos=Vector(6,4.7683715820313e-07,-21.343319892883),ang=Angle(0,0,0)},{pos=Vector(-22.511560440063,-7.1525573730469e-07,-25.658782958984),ang=Angle(-30,0,0)}},
+["models/xqm/rails/loop_left.mdl"] = {{pos=Vector(14.158432006836,41.20337677002,-20.027099132538),ang=Angle(0,22.5,0)},{pos=Vector(-13.847097158432,-41.200744628906,-20.02726316452),ang=Angle(0,22.5,0)}},
+["models/xqm/rails/loop_right.mdl"] = {{pos=Vector(14.09488940239,-41.255226135254,-19.945592880249),ang=Angle(0,-22.5,0)},{pos=Vector(-13.908286809921,41.057624816895,-19.945792198181),ang=Angle(0,-22.5,0)}},
+["models/xqm/rails/slope_up_30.mdl"] = {{pos=Vector(6,4.7683715820313e-07,-21.343319892883),ang=Angle(0,0,0)},{pos=Vector(-32.413250923157,-1.4305114746094e-06,-14.374694824219),ang=Angle(30,0,0)}},
+["models/xqm/rails/slope_up_45.mdl"] = {{pos=Vector(6,4.7683715820313e-07,-21.343319892883),ang=Angle(0,0,0)},{pos=Vector(-42.648241043091,-2.1457672119141e-06,-6.3886597156525),ang=Angle(45,0,0)}},
+["models/xqm/rails/slope_up_90.mdl"] = {{pos=Vector(6,4.7683715820313e-07,-3.7774149775505),ang=Angle(0,0,0)},{pos=Vector(-63.174390792847,-2.8610229492188e-06,65),ang=Angle(90,0,0)}},
+["models/xqm/rails/straight_1.mdl"] = {{pos=Vector(6,4.7683715820313e-07,-21.343319892883),ang=Angle(0,0,0)},{pos=Vector(-5.9999897480011,-4.7683715820313e-07,-21.343319892883),ang=Angle(0,0,0)}},
+["models/xqm/rails/funnel.mdl"] = {{pos=Vector(21.297929763794,7.1525573730469e-07,4.2820401191711),ang=Angle(-90,0,0)}},
+["models/xqm/rails/twist_45_right.mdl"] = {{pos=Vector(6,4.7683715820313e-07,-21.343319892883),ang=Angle(0,0,0)},{pos=Vector(-90,-13.497744083405,-15.752370119095),ang=Angle(0,0,-45)}},
+["models/xqm/rails/straight_4.mdl"] = {{pos=Vector(6,4.7683715820313e-07,-21.343319892883),ang=Angle(0,0,0)},{pos=Vector(-42,-2.1457672119141e-06,-21.343319892883),ang=Angle(0,0,0)}},
+}
+
+local function snap(e1, e2, data1, data2)
+    local closest, a, b = math.huge, nil, nil
+    for k, v in pairs(data1) do
+        for o, p in pairs(data2) do
+            local dist = e1:localToWorld(v.pos):getDistanceSqr(e2:localToWorld(p.pos))
+            if dist<closest then
+                closest = dist
+                a = v
+                b = p
+            end
+        end
+    end
+    local amat, bmat, cmat = Matrix(), Matrix(), Matrix()
+    amat:setTranslation(a.pos)
+    amat:setAngles(a.ang)
+    bmat:setTranslation(b.pos)
+    bmat:setAngles(b.ang)
+    local relativeAngle = (e2:getBoneMatrix(0)*bmat*(e1:getBoneMatrix(0)*amat):getInverseTR()):getAngles()
+    local rotate = math.abs(relativeAngle[2])>90
+    if rotate then amat:rotate(Angle(0,180,0)) end
+    
+    local result = e2:getBoneMatrix(0)*bmat*amat:getInverseTR()
+    e1:enableMotion(false)
+    e1:setPos(result:getTranslation())
+    e1:setAngles(result:getAngles())
+    e1:emitSound("physics/metal/metal_box_impact_bullet"..math.random(3)..".wav")
+    try(function() e1:removeCollisionListener() end)
+end
+
+hook.add("physgunpickup","",function(ply,ent)
+    --if ply==owner() then
+        local datamodel = data[ent:getModel()]
+        if datamodel then
+            try(function() ent:removeCollisionListener() end)
+            ent:addCollisionListener(function(tbl)
+                local e = tbl.HitEntity
+                if isValid(e) then
+                    local otherdatamodel = data[e:getModel()]
+                    if otherdatamodel then
+                        snap(ent, e, datamodel, otherdatamodel)
+                    end
+                end
+            end)
+        end
+    --end
+end)
+
+hook.add("physgundrop","",function(ply,ent)
+    if ply==owner() then
+        local datamodel = data[ent:getModel()]
+        if datamodel then
+            try(function() ent:removeCollisionListener() end)
+        end
+    end
+end)
