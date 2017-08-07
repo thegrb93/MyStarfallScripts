@@ -7,6 +7,15 @@ local spacing = 80 --How far apart they need to be
 local lizards = 50
 local music = "https://www.dropbox.com/s/u9qo6tlob94l9ri/Spongebob%20Jellyfish%20Jam%20Louder.mp3?raw=1"
 local animation = "taunt_dance"
+local models = {
+"models/aeonpm/aeon.mdl",
+--[["models/mailer/characters/wow_arakkoa.mdl",
+"models/player/mikier/renamon.mdl",
+"models/player/pokemon/blazikenpm.mdl",
+"models/highdragon_player/hidrgpl.mdl",
+"models/player/stenli/lycan_werewolf.mdl",
+"models/player/shi/awoo.mdl",]]
+}
 
 if SERVER then
     local function randPos(postbl, size)
@@ -38,20 +47,27 @@ if SERVER then
     end
     
     --Create dancing holograms
-    local model = "models/aeonpm/aeon.mdl"
     local chipPos = chip():getPos()
     local holos, postbl = {}, {}
     for i=1, lizards do
         local pos = randPos(postbl, radius)
-        local holo = holograms.create(chipPos+pos, Angle(0,math.random()*360,0), model)
+        local holo = holograms.create(chipPos+pos, Angle(0,math.random()*360,0), models[math.random(#models)])
         for o=1, 7 do holo:setBodygroup(o, 1) end
-        holo:setAnimation(animation)
+        holo:setAnimation(animation, 0.05)
         holos[i] = holo
         postbl[i] = pos
     end
-    timer.create("dance",holos[1]:getAnimationLength(),0,function()
-        for k, v in ipairs(holos) do v:setAnimation(animation) end
-    end)
+    
+    local animLen = holos[1]:getAnimationLength()*0.9
+    function loopBack()
+        for k, v in ipairs(holos) do v:setAnimation(animation, 0.95, -1) end
+        timer.simple(animLen, loopForward)
+    end
+    function loopForward()
+        for k, v in ipairs(holos) do v:setAnimation(animation, 0.05, 1) end
+        timer.simple(animLen, loopBack)
+    end
+    timer.simple(animLen, loopBack)
 else
     bass.loadURL(music,"3d noblock",function(snd, err, errtxt)
         if snd then
