@@ -1,0 +1,45 @@
+--@name DanceFloor
+--@author Sparky
+--@client
+
+local function mix(a,b,t)
+    return (b-a)*t+a
+end
+
+local function hash(x,y)
+    return (math.sin(x*127.1+y*311.7)*43758.5453123)%1
+end
+
+local function noise(x,y)
+    local fx, fy = x%1, y%1
+    local ix, iy = x-fx, y-fy
+    local ux, uy = fx*fx*(3-2*fx), fy*fy*(3-2*fy)
+    return mix(mix( hash( ix, iy ), hash( ix+1, iy ), ux),
+               mix( hash( ix, iy+1 ), hash( ix+1, iy+1 ), ux),
+               uy)
+end
+
+local squaresize = 512/8
+local start = 0
+local endsize = 512-squaresize
+
+local squaresize2 = squaresize/2
+local start2 = endsize/2-squaresize2
+local endsize2 = endsize/2+squaresize
+hook.add("render","",function()
+    local time = timer.curtime()*2.3
+    for x=start, endsize, squaresize do
+        for y=start, endsize, squaresize do
+            local z = noise(x+time, y+time)
+            render.setColor(Color(z*70+250,0.8,0.8):hsvToRGB())
+            render.drawRect(x, y, squaresize, squaresize)
+        end
+    end
+    for x=start2, endsize2, squaresize2 do
+        for y=start2, endsize2, squaresize2 do
+            local z = noise(x+time, y+time)
+            render.setColor(Color(z*70,0.8,0.8):hsvToRGB())
+            render.drawRect(x, y, squaresize2, squaresize2)
+        end
+    end
+end)
