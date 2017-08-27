@@ -1,0 +1,73 @@
+--@name PixelLoader
+--@author Sparky
+--@shared
+
+--Load an image url, reads it, and builds a pixel matrix out of props with them
+
+-- Remember to set w and h to the number of pixels
+local url = "https://dl.dropboxusercontent.com/s/9u81tjrworn9qmm/sprite.png"
+local w,h = 32, 28
+
+-- Adjust these to change the pixel props
+local pixel = "models/hunter/blocks/cube05x05x025.mdl"
+local pixelAngle = Angle(90,90,0)
+local pixelSize = 23.725
+
+if SERVER then
+    hook.add("net","",function(n)
+        if n=="data" then
+            net.readStream(function(data)
+                local p = chip():getPos()
+                local i = 1
+                local props = {}
+                for x=1, w do
+                    for y=1, h do
+                        local col = Color(string.byte(string.sub(data,i,i+3),1,3))
+                        i=i+3
+                        if col[1]~=0 or col[2]~=0 or col[3]~=0 then
+                            props[#props+1] = {pos = p+Vector(x-1, 0, h-y-1)*pixelSize, col = col}
+                        end
+                    end
+                end
+                i = 1
+                hook.add("think","",function()
+                    local p = props[i]
+                    local e = prop.create(p.pos, pixelAngle, pixel, true)
+                    e:setColor(p.col)
+                    e:setMaterial("models/debug/debugwhite")
+                    i=i+1
+                    if i>#props then
+                        hook.remove("think","")
+                    end
+                end)
+            end)
+        end
+    end)
+elseif player()==owner() then
+    render.createRenderTarget("a")
+    render.getTextureID(url, function(t)
+        hook.add("renderoffscreen","",function()
+            render.selectRenderTarget("a")
+            render.setTexture(t)
+            render.setFilterMag(0)
+            render.setFilterMin(0)
+            render.clear(Color(0,0,0,0))
+            render.drawTexturedRect(0,0,1024,1024)
+            
+            render.capturePixels()
+            
+            local data = {}
+            for x=1, w do
+                for y=1, h do
+                    local c = render.readPixel((x-0.5)*1024/w, (y-0.5)*1024/h)
+                    data[#data+1] = string.char(c[1])..string.char(c[2])..string.char(c[3])
+                end
+            end
+            net.start("data")
+            net.writeStream(table.concat(data))
+            net.send()
+            
+            hook.remove("renderoffscreen","")
+        end)
+    end, "left top")
+end
