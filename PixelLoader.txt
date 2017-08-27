@@ -30,14 +30,14 @@ if SERVER then
                     end
                 end
                 i = 1
-                hook.add("think","",function()
+                timer.create("SpawnProps", 1/prop.spawnRate(), 0, function()
                     local p = props[i]
                     local e = prop.create(p.pos, pixelAngle, pixel, true)
                     e:setColor(p.col)
                     e:setMaterial("models/debug/debugwhite")
                     i=i+1
                     if i>#props then
-                        hook.remove("think","")
+                        timer.remove("SpawnProps")
                     end
                 end)
             end)
