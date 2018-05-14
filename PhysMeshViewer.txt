@@ -1,0 +1,53 @@
+--@name PhysMeshViewer
+--@author Sparky
+--@shared
+
+-- Place onto a prop to view a wireframe of its physmesh
+
+local holos = {}
+if SERVER then
+
+    local e = chip():isWeldedTo()
+    local meshes = e:getPhysicsObject():getMeshConvexes()
+    for i=1, #meshes do
+        holos[i] = holograms.create(e:getPos(), e:getAngles(), "models/Combine_Helicopter/helicopter_bomb01.mdl")
+        holos[i]:setMaterial("models/wireframe")
+        holos[i]:setParent(e)
+    end
+    hook.add("net","",function(name,len,pl)    
+        local name = pl:getName()
+        local i = 1
+        hook.add("think",name,function()
+            if i>#meshes or not isValid(pl) then
+                hook.remove("think",name)
+                return
+            end
+            local m = meshes[i]
+            if net.getBytesLeft()>(6+12*#m) then
+                net.start("")
+                net.writeEntity(holos[i])
+                net.writeUInt(#m, 32)
+                for o=1, #m do
+                    net.writeVector(m[o].pos)
+                end
+                net.send(pl)
+                i = i + 1
+            end
+        end)
+    end)
+
+else
+
+    net.start("")
+    net.send()
+    
+    hook.add("net","",function(n)
+        local e = net.readEntity()
+        local m = {}
+        for o=1, net.readUInt(32) do
+            m[o] = {pos = net.readVector()}
+        end
+        e:setHologramMesh(mesh.createFromTable(m))
+    end)
+    
+end
