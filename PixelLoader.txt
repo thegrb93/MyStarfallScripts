@@ -4,9 +4,7 @@
 
 --Load an image url, reads it, and builds a pixel matrix out of props with them
 
--- Remember to set w and h to the number of pixels
-local url = "https://dl.dropboxusercontent.com/s/9u81tjrworn9qmm/sprite.png"
-local w,h = 32, 28
+local url = "https://dl.dropboxusercontent.com/s/hvn8umytteeu1j8/sprite.png?dl=0"
 
 -- Adjust these to change the pixel props
 local pixel = "models/hunter/blocks/cube05x05x025.mdl"
@@ -16,58 +14,58 @@ local pixelSize = 23.725
 if SERVER then
     hook.add("net","",function(n)
         if n=="data" then
+            local w, h = net.readUInt(32), net.readUInt(32)
             net.readStream(function(data)
                 local p = chip():getPos()
                 local i = 1
                 local props = {}
                 for x=1, w do
                     for y=1, h do
-                        local col = Color(string.byte(string.sub(data,i,i+3),1,3))
+                        local col = Color(string.byte(string.sub(data,i,i+2),1,3))
                         i=i+3
-                        if col[1]~=0 or col[2]~=0 or col[3]~=0 then
+                        if col.r > 0 or col.g > 0 or col.b > 0 then
                             props[#props+1] = {pos = p+Vector(x-1, 0, h-y-1)*pixelSize, col = col}
                         end
                     end
                 end
                 i = 1
-                timer.create("SpawnProps", 1/prop.spawnRate(), 0, function()
+                timer.create("SpawnProps", 0.1, 0, function()
+                    if i>#props then timer.remove("SpawnProps") return end
                     local p = props[i]
                     local e = prop.create(p.pos, pixelAngle, pixel, true)
                     e:setColor(p.col)
                     e:setMaterial("models/debug/debugwhite")
+                    e:setSolid(false)
                     i=i+1
-                    if i>#props then
-                        timer.remove("SpawnProps")
-                    end
                 end)
             end)
         end
     end)
 elseif player()==owner() then
-    render.createRenderTarget("a")
-    render.getTextureID(url, function(t)
+    render.createRenderTarget("sprite")
+    local mat = material.create("UnlitGeneric")
+    mat:setInt("$flags",32816)
+    mat:setTextureRenderTarget("$basetexture","sprite")
+    mat:setTextureURL("$basetexture", url, function(t,_,w,h)
+        if not t then print("Failed to load url "..url) return end
         hook.add("renderoffscreen","",function()
-            render.selectRenderTarget("a")
-            render.setTexture(t)
-            render.setFilterMag(0)
-            render.setFilterMin(0)
-            render.clear(Color(0,0,0,0))
-            render.drawTexturedRect(0,0,1024,1024)
-            
+            render.selectRenderTarget("sprite")
             render.capturePixels()
             
             local data = {}
             for x=1, w do
                 for y=1, h do
-                    local c = render.readPixel((x-0.5)*1024/w, (y-0.5)*1024/h)
-                    data[#data+1] = string.char(c[1])..string.char(c[2])..string.char(c[3])
+                    local c = render.readPixel(x, y)
+                    data[#data+1] = string.char(c.r)..string.char(c.g)..string.char(c.b)
                 end
             end
             net.start("data")
+            net.writeUInt(w, 32)
+            net.writeUInt(h, 32)
             net.writeStream(table.concat(data))
             net.send()
             
             hook.remove("renderoffscreen","")
         end)
-    end, "left top")
+    end)
 end
