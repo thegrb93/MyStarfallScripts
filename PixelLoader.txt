@@ -42,14 +42,10 @@ if SERVER then
         end
     end)
 elseif player()==owner() then
-    render.createRenderTarget("sprite")
-    local mat = material.create("UnlitGeneric")
-    mat:setInt("$flags",32816)
-    mat:setTextureRenderTarget("$basetexture","sprite")
-    mat:setTextureURL("$basetexture", url, function(t,_,w,h)
+    render.getTextureID(url, function(t,_,w,h)
         if not t then print("Failed to load url "..url) return end
         hook.add("renderoffscreen","",function()
-            render.selectRenderTarget("sprite")
+            render.selectRenderTarget(t:getName())
             render.capturePixels()
             
             local data = {}
