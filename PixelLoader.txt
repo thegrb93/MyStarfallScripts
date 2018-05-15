@@ -4,7 +4,7 @@
 
 --Load an image url, reads it, and builds a pixel matrix out of props with them
 
-local url = "https://dl.dropboxusercontent.com/s/hvn8umytteeu1j8/sprite.png?dl=0"
+local url = "https://dl.dropboxusercontent.com/s/47r4rc0muprd9s0/latest.png?dl=0"
 
 -- Adjust these to change the pixel props
 local pixel = "models/hunter/blocks/cube05x05x025.mdl"
@@ -24,12 +24,12 @@ if SERVER then
                         local col = Color(string.byte(string.sub(data,i,i+2),1,3))
                         i=i+3
                         if col.r > 0 or col.g > 0 or col.b > 0 then
-                            props[#props+1] = {pos = p+Vector(x-1, 0, h-y-1)*pixelSize, col = col}
+                            props[#props+1] = {pos = p+Vector(x-1, 0, h-y+1)*pixelSize, col = col}
                         end
                     end
                 end
                 i = 1
-                timer.create("SpawnProps", 0.1, 0, function()
+                timer.create("SpawnProps", 0, 0, function()
                     if i>#props then timer.remove("SpawnProps") return end
                     local p = props[i]
                     local e = prop.create(p.pos, pixelAngle, pixel, true)
@@ -51,7 +51,7 @@ elseif player()==owner() then
             local data = {}
             for x=1, w do
                 for y=1, h do
-                    local c = render.readPixel(x, y)
+                    local c = render.readPixel(x-0.5, y-0.5)
                     data[#data+1] = string.char(c.r)..string.char(c.g)..string.char(c.b)
                 end
             end

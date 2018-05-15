@@ -1,8 +1,6 @@
 --@name PhysMeshViewer
---@author Sparky
+--@author
 --@shared
-
--- Place onto a prop to view a wireframe of its physmesh
 
 local holos = {}
 if SERVER then
@@ -23,7 +21,7 @@ if SERVER then
                 return
             end
             local m = meshes[i]
-            if net.getBytesLeft()>(6+12*#m) then
+            if net.getBytesLeft()>(60+12*#m) then
                 net.start("")
                 net.writeEntity(holos[i])
                 net.writeUInt(#m, 32)
@@ -44,10 +42,20 @@ else
     hook.add("net","",function(n)
         local e = net.readEntity()
         local m = {}
+        local mins, maxs = Vector(math.huge), Vector(-math.huge)
         for o=1, net.readUInt(32) do
-            m[o] = {pos = net.readVector()}
+            local pos = net.readVector()
+            m[o] = {pos = pos}
+            if pos[1] < mins[1] then mins[1] = pos[1] end
+            if pos[2] < mins[2] then mins[2] = pos[2] end
+            if pos[3] < mins[3] then mins[3] = pos[3] end
+            if pos[1] > maxs[1] then maxs[1] = pos[1] end
+            if pos[2] > maxs[2] then maxs[2] = pos[2] end
+            if pos[3] > maxs[3] then maxs[3] = pos[3] end
         end
+        
         e:setHologramMesh(mesh.createFromTable(m))
+        e:setHologramRenderBounds(mins, maxs)
     end)
     
 end
