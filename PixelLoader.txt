@@ -4,7 +4,11 @@
 
 --Load an image url, reads it, and builds a pixel matrix out of props with them
 
-local url = "https://dl.dropboxusercontent.com/s/47r4rc0muprd9s0/latest.png?dl=0"
+--local url = "https://dl.dropboxusercontent.com/s/47r4rc0muprd9s0/latest.png?dl=0"
+--local url = "https://dl.dropboxusercontent.com/s/xuypqw3gecmizro/sprite2.png?dl=0"
+--local url = "https://dl.dropboxusercontent.com/s/vmthnc4ywpjqcui/sprite3.png?dl=0"
+--local url = "https://i.imgur.com/q7IAbbB.png"
+local url = "https://dl.dropboxusercontent.com/s/s6hfnaqjklab17b/sprite4.png?dl=0"
 
 -- Adjust these to change the pixel props
 local pixel = "models/hunter/blocks/cube05x05x025.mdl"
@@ -34,8 +38,9 @@ if SERVER then
                     local p = props[i]
                     local e = prop.create(p.pos, pixelAngle, pixel, true)
                     e:setColor(p.col)
-                    e:setMaterial("models/debug/debugwhite")
+                    e:setMaterial("debug/debugdrawflat")
                     e:setSolid(false)
+                    e:setDrawShadow(false)
                     i=i+1
                 end)
             end)
