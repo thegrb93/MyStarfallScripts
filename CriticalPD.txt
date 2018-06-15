@@ -1,0 +1,91 @@
+--@name CriticalPD
+--@author Sparky
+--@server
+
+-- This class provides critically damped position and angle tracking to an entity invarient to the entity's mass/inertia or server frametime
+-- You can adjust the gains to anything you want, higher gains just make it reach the target faster
+
+local EntityCriticalPD, EntityCriticalPDMeta = {}, {} EntityCriticalPDMeta.__index = EntityCriticalPD
+function EntityCriticalPD.New(ent, translationGain, rotationGain)
+	local self = setmetatable({}, EntityCriticalPDMeta)
+
+	self.ent = ent
+	self.phys = ent:getPhysicsObject()
+	self.masscenter = self.phys:getMassCenter()
+	self:refreshMassInertia()
+	self:setGain(translationGain, rotationGain)
+	self.targetPos = ent:getPos()
+	self.targetAng = ent:getAngles()
+	
+	return self
+end
+
+function EntityCriticalPD:setTarget(pos, ang)
+	self.targetPos = pos
+	self.targetAng = Matrix()
+	self.targetAng:setAngles(ang)
+end
+
+function EntityCriticalPD:setGain(translationGain, rotationGain)
+	self.fk = translationGain*timer.frametime()
+	self.fc = math.sqrt(self.fk*timer.frametime())*2 --critical translation damping coefficient
+	self.tk = rotationGain*timer.frametime()
+	self.tc = math.sqrt(self.tk*timer.frametime())*2 --critical rotation damping coefficient
+end
+
+function EntityCriticalPD:refreshMassInertia()
+	self.mass = self.phys:getMass()
+	
+	local i = self.phys:getInertia()
+	self.ixx = (i[2] + i[3] - i[1])/2
+	self.iyy = (i[1] + i[3] - i[2])/2
+	self.izz = (i[1] + i[2] - i[3])/2
+end
+
+function EntityCriticalPD:getInertiaFromAxis(axis)
+	axis = self.phys:worldToLocalVector(axis)
+	return self.ixx*(1-axis[1]^2) + self.iyy*(1-axis[2]^2) + self.izz*(1-axis[3]^2)
+end
+
+function EntityCriticalPD:simulate()
+	-- Calculate force
+	local x = self.targetPos - self.phys:localToWorld(self.masscenter)
+	local dx = -self.phys:getVelocity()
+	local force = x*self.fk + dx*self.fc
+	self.phys:applyForceCenter(force*self.mass)
+	
+	-- Calculate torque
+	--local m = e:getBoneMatrix(0) Don't use this function, it's bugged. https://github.com/Facepunch/garrysmod-issues/issues/3507
+	local m = Matrix() m:setAngles(self.ent:getAngles())
+	local axis, ang = (self.targetAng*m:getInverseTR()):getAxisAngle()
+	local t = axis*math.deg(ang)
+	local dt = -self.phys:localToWorldVector(self.phys:getAngleVelocity())
+		
+	local torque = t*self.tk + dt*self.tc
+		
+	-- Make sure torque isn't null vector or singularity will happen with torque:getNormalized()
+	if torque[1]~=0 or torque[2]~=0 or torque[3]~=0 then
+		local applytorque = torque*self:getInertiaFromAxis(torque:getNormalized())
+		self.phys:applyTorque(applytorque)
+	end
+end
+
+
+wire.adjustInputs({"A"},{"entity"})
+hook.add("input","",function(k,v)
+	if k=="A" and isValid(v) then
+
+		local e = EntityCriticalPD.New(v, 200, 200)
+		hook.add("think","",function()
+			if isValid(e.ent) then
+				e:setTarget(chip():getPos()+chip():getUp()*100, chip():getAngles())
+				e:simulate()
+			else
+				hook.remove("think","")
+			end
+		end)
+
+	end
+end)
+
+
