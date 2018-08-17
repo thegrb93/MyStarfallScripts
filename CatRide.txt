@@ -1,0 +1,586 @@
+--@name CatRide
+--@author Sparky
+--@server
+--@include libs/CriticalPD.txt
+
+local criticalpd = require("libs/CriticalPD.txt")
+
+local ents = {}
+local Driver, Lookat, Lookatattach
+local basepd
+
+local leg = {
+    __index = {
+        simulate = function(self, speed)
+            local t1 = math.sin(timer.curtime()*speed+self.phase)*20
+            self.leg1:setAngles(self.base:localToWorldAngles(Angle(0,0,t1)))
+        end,
+        jump = function(self)
+            self.leg1:setAngles(self.base:localToWorldAngles(Angle(0,0,self.jumpval)))
+        end,
+        stand = function(self)
+            self.leg1:setAngles(self.base:localToWorldAngles(Angle(0,0,0)))
+        end
+    },
+    __call = function(t,base,leg1,leg2,phase,jumpval)
+        local new = {
+            base = base,
+            leg1 = leg1,
+            phase = phase,
+            jumpval = jumpval
+            --leg2 = leg2,
+            --anchor1 = holograms.create(leg1:getPos(), Angle(), "models/hunter/blocks/cube025x025x025.mdl"),
+            --anchor2 = holograms.create(leg2:getPos(), Angle(), "models/hunter/blocks/cube025x025x025.mdl"),
+        }
+        --new.anchor1:setParent(base)
+        --new.anchor1:setColor(Color(255,255,255,100))
+        leg1:setParent(base)
+        
+        --new.anchor2:setParent(leg1)
+        --new.anchor2:setColor(Color(255,255,255,100))
+        --leg2:setParent(new.anchor2)
+        
+        return setmetatable(new, t)
+    end
+}
+setmetatable(leg, leg)
+
+wire.adjustOutputs({"A","B","C"},{"vector","vector","normal"})
+local function simulate()
+    local pos, vel = ents.Base:getPos(), ents.Base:getVelocity()
+    local forward, right, up = ents.Base:getRight(), ents.Base:getForward(), ents.Base:getUp()
+    local ang = ents.Base:getAngles()
+    
+    local tr = trace.trace(pos, pos+up*-35, {ents.Base, ents.Chair, Driver})
+    local groundup, truegroundup
+    if tr.Hit then
+        truegroundup = tr.HitNormal
+        groundup = Vector(truegroundup[1], truegroundup[2], truegroundup[3])
+        if groundup[3]<0.8 then
+            groundup[3] = 0.8*math.sqrt(groundup[1]^2+groundup[2]^2)/math.sqrt(1-0.8^2)
+            groundup:normalize()
+            if groundup[1]~=groundup[1] then
+                groundup = Vector(0,0,1)
+            end
+        end
+    else
+        groundup = Vector(0,0,1)
+        truegroundup = Vector(0,0,1)
+    end
+    wire.ports.A = groundup
+    wire.ports.B = truegroundup
+    
+    local forwardflat = forward - groundup*groundup:dot(forward)
+    forwardflat:normalize()
+    if forwardflat[1]~=forwardflat[1] then
+        forwardflat = groundup
+    end
+    
+    local targetvel, targetangvel = Vector(), Vector()
+    local moveforward
+    if Driver then
+        local w, a, s, d, turbo, jump = 
+        Driver:keyDown(IN_KEY.FORWARD), 
+        Driver:keyDown(IN_KEY.MOVELEFT), 
+        Driver:keyDown(IN_KEY.BACK), 
+        Driver:keyDown(IN_KEY.MOVERIGHT),
+        Driver:keyDown(IN_KEY.SPEED),
+        Driver:keyDown(IN_KEY.JUMP)
+        
+        if w then moveforward = turbo and 2 or 1
+        elseif s then moveforward = turbo and -2 or -1
+        end
+        
+        if a then
+            targetangvel[3] = 100
+        elseif d then
+            targetangvel[3] = -100
+        end
+        
+        if moveforward then
+            targetvel = forwardflat*(moveforward*-200)
+        end
+        if jump and tr.Hit then
+            targetvel[3] = targetvel[3] + 500
+        end
+    end
+    
+    if tr.Hit then
+        wire.ports.C = groundup:dot(pos - tr.HitPos)
+        local gravityfix = Vector(0,0,42)
+        gravityfix = gravityfix - truegroundup*truegroundup:dot(gravityfix)
+        basepd.targetVel = targetvel + gravityfix
+        basepd.targetPos = pos + truegroundup*(28 - truegroundup:dot(pos - tr.HitPos))
+        basepd:simulateForce()
+        if moveforward then
+            local speed = moveforward*15
+            ents.LegFR:simulate(speed)
+            ents.LegFL:simulate(speed)
+            ents.LegBR:simulate(speed)
+            ents.LegBL:simulate(speed)
+        else
+            ents.LegFR:stand()
+            ents.LegFL:stand()
+            ents.LegBR:stand()
+            ents.LegBL:stand()
+        end
+    else
+        ents.Base:applyForceCenter((targetvel - ents.Base:getVelocity():setZ(0))*10)
+        ents.LegFR:jump()
+        ents.LegFL:jump()
+        ents.LegBR:jump()
+        ents.LegBL:jump()
+    end
+    
+    
+    basepd.targetAng:setForward(groundup:cross(forwardflat))
+    basepd.targetAng:setRight(forwardflat)
+    basepd.targetAng:setUp(groundup)
+    
+    --try(function()
+        basepd.targetAngVel = targetangvel
+        basepd:simulateAngForce()
+    --[[end,
+    function()
+        print(groundup, forwardflat)
+    end)]]
+    
+    local headneedmatrix = Matrix()
+    if isValid(Lookat) then
+        local lookpos = Lookat:getAttachment(Lookatattach)
+        local headforward = (ents.CatHead:getPos()-lookpos):getNormalized()
+        local dot = headforward:dot(forward)
+        if dot<0.1 then
+            local t = headforward - forward*dot
+            headforward = (t + forward*(0.1*t:getLength()/math.sqrt(1-0.1^2))):getNormalized()
+        end
+        local headright = up:cross(headforward):getNormalized()
+        local headup = headforward:cross(headright)
+        headneedmatrix:setRight(headforward)
+        headneedmatrix:setForward(headright)
+        headneedmatrix:setUp(headup)
+    else
+        headneedmatrix:setRight(forward)
+        headneedmatrix:setForward(right)
+        headneedmatrix:setUp(up)
+    end
+        
+    local headangles = ents.CatHead:getAngles()
+    local headmatrix = Matrix() headmatrix:setAngles(headangles)
+    local axis, ang = (headneedmatrix * headmatrix:getInverseTR()):getAxisAngle()
+    local targetang = headangles:rotateAroundAxis(axis, nil, ang*0.1)
+    ents.CatHead:setAngles(targetang)
+end
+
+local function init()
+    createPac(ents.Base, CatHead)
+    createPac(ents.Base, CatBody)
+    createPac(ents.Base, CatTail)
+    createPac(ents.Base, CatLegFR)
+    createPac(ents.Base, CatLegFL)
+    createPac(ents.Base, CatLegBR)
+    createPac(ents.Base, CatLegBL)
+    
+    ents.CatHead = CatHead[1].self.Ent   
+    timer.create("LookAtTarget", 1, 0, function()
+        Lookat = find.inSphere(ents.Base:getPos()-ents.Base:getRight()*80, 200, function(e) return e:isPlayer() and e~=Driver end)[1]
+        if Lookat then
+            Lookatattach = Lookat:lookupAttachment("eyes")
+        end
+    end)
+    
+    ents.LegFR = leg(ents.Base, CatLegFR[1].self.Ent, CatLegFR[1].children[1].self.Ent, 0, 40)
+    ents.LegFL = leg(ents.Base, CatLegFL[1].self.Ent, CatLegFL[1].children[1].self.Ent, math.pi, 40)
+    ents.LegBR = leg(ents.Base, CatLegBR[1].self.Ent, CatLegBR[1].children[1].self.Ent, 1, -40)
+    ents.LegBL = leg(ents.Base, CatLegBL[1].self.Ent, CatLegBL[1].children[1].self.Ent, math.pi+1, -40)
+
+    basepd = criticalpd.New(ents.Base, 50, 80)
+    hook.add("think","simulate",simulate)
+    
+    --[[local tail, tailtip = CatTail[1].self.Ent, CatTail[1].children[1].self.Ent
+    local function sendTail(name, len, pl)
+        net.start("tail")
+        net.writeEntity(tail)
+        net.writeEntity(tailtip)
+        net.send(pl)
+    end
+    sendTail()
+    hook.add("net","",sendTail)]]
+end
+
+wire.adjustInputs({"Base","Chair"},{"entity","entity"})
+local wl = chip():getWirelink()
+hook.add("input","",function(name, value)
+    if wl:inputType(name) == "ENTITY" then
+        ents[name] = value
+        ents[name.."Phys"] = isValid(value) and value:getPhysicsObject()
+    end
+    for k, v in pairs(wl:inputs()) do
+        if wl:inputType(v)=="ENTITY" and not isValid(ents[v]) then
+            hook.remove("think","simulate")
+            return
+        end
+    end
+    timer.simple(0, init)
+end)
+
+hook.add("playerenteredvehicle","",function(ply,veh)
+    if ents.Chair==veh then
+        Driver = ply
+    end
+end)
+
+hook.add("playerleavevehicle","",function(ply,veh)
+    if ents.Chair==veh then
+        Driver = nil
+    end
+end)
+
+function createPac(parent, children)
+    for i, v in ipairs(children) do
+        local self = v.self
+        local h = holograms.create(parent:localToWorld(self.Position), parent:localToWorldAngles(self.Angles), self.Model, self.Scale)
+        h:setColor(Color(self.Color[1]*255, self.Color[2]*255, self.Color[3]*255, 255))
+        h:setParent(parent)
+        self.Ent = h
+        if self.Clips then
+            for i, clip in ipairs(self.Clips) do
+                h:setClip(i, true, clip.Position, clip.Angles:getForward(), true)
+            end
+        end
+        createPac(h, v.children)
+    end
+end
+
+CatHead = {
+    [1] = {
+        ["children"] = {
+            [1] = {
+                ["children"] = {
+                    [1] = {
+                        ["children"] = {
+                        },
+                        ["self"] = {
+                            ["Name"] = "Right Ear Out",
+                            ["Angles"] = Angle(0, 0, -3.5),
+                            ["Position"] = Vector(0, 0, 0),
+                            ["Scale"] = Vector(0.60000002384186, 1.1000000238419, 0.5),
+                            ["Color"] = Vector(0.85490000247955, 0.85490000247955, 0.85490000247955),
+                            ["Model"] = "models/holograms/hq_hdome_thick.mdl",
+                        },
+                    },
+                },
+                ["self"] = {
+                    ["Name"] = "Right Ear",
+                    ["Angles"] = Angle(30, 0, 80),
+                    ["Position"] = Vector(4, 3, 5.6999998092651),
+                    ["Scale"] = Vector(0.5, 1, 0.20000000298023),
+                    ["Color"] = Vector(1, 0.49799999594688, 0.49799999594688),
+                    ["Model"] = "models/holograms/hq_rcylinder_thick.mdl",
+                },
+            },
+            [2] = {
+                ["children"] = {
+                    [1] = {
+                        ["children"] = {
+                        },
+                        ["self"] = {
+                            ["Name"] = "Lip1",
+                            ["Angles"] = Angle(0, 0, 87),
+                            ["Position"] = Vector(1.1000000238419, 0, 0),
+                            ["Scale"] = Vector(0.20000000298023, 0.20000000298023, 0.20000000298023),
+                            ["Color"] = Vector(0.15690000355244, 0.15690000355244, 0.15690000355244),
+                            ["Model"] = "models/holograms/hq_torus_thin.mdl",
+                            ["Clips"] = {
+                                [1] = {
+                                    ["Position"] = Vector(0, 0.40000000596046, 0),
+                                    ["Name"] = "",
+                                    ["Angles"] = Angle(0, 120, 0),
+                                },
+                            },
+                        },
+                    },
+                    [2] = {
+                        ["children"] = {
+                        },
+                        ["self"] = {
+                            ["Name"] = "Tongue",
+                            ["Angles"] = Angle(0, 0, 165.30000305176),
+                            ["Position"] = Vector(0, 0.19499999284744, 0.69999998807907),
+                            ["Scale"] = Vector(0.18000000715256, 0.050000000745058, 0.10999999940395),
+                            ["Color"] = Vector(1, 0.49799999594688, 0.49799999594688),
+                            ["Model"] = "models/holograms/hq_cone.mdl",
+                        },
+                    },
+                    [3] = {
+                        ["children"] = {
+                        },
+                        ["self"] = {
+                            ["Name"] = "Whisker2",
+                            ["Angles"] = Angle(10, 0, 0),
+                            ["Position"] = Vector(0, 0.15000000596046, 0),
+                            ["Scale"] = Vector(0.5, 0.0049999998882413, 0.0049999998882413),
+                            ["Color"] = Vector(0.15690000355244, 0.15690000355244, 0.15690000355244),
+                            ["Model"] = "models/holograms/hq_rcube_thin.mdl",
+                        },
+                    },
+                    [4] = {
+                        ["children"] = {
+                        },
+                        ["self"] = {
+                            ["Name"] = "Lip2",
+                            ["Angles"] = Angle(0, 0, 87),
+                            ["Position"] = Vector(-1.1000000238419, 0, 0),
+                            ["Scale"] = Vector(0.20000000298023, 0.20000000298023, 0.20000000298023),
+                            ["Color"] = Vector(0.15690000355244, 0.15690000355244, 0.15690000355244),
+                            ["Model"] = "models/holograms/hq_torus_thin.mdl",
+                            ["Clips"] = {
+                                [1] = {
+                                    ["Position"] = Vector(0, 0.40000000596046, 0),
+                                    ["Name"] = "",
+                                    ["Angles"] = Angle(0, 60, 0),
+                                },
+                            },
+                        },
+                    },
+                    [5] = {
+                        ["children"] = {
+                        },
+                        ["self"] = {
+                            ["Name"] = "Whisker1",
+                            ["Angles"] = Angle(0, 0, 0),
+                            ["Position"] = Vector(0, 0.15000000596046, 0),
+                            ["Scale"] = Vector(0.5, 0.0049999998882413, 0.0049999998882413),
+                            ["Color"] = Vector(0.15690000355244, 0.15690000355244, 0.15690000355244),
+                            ["Model"] = "models/holograms/hq_rcube_thin.mdl",
+                        },
+                    },
+                    [6] = {
+                        ["children"] = {
+                        },
+                        ["self"] = {
+                            ["Name"] = "Whisker3",
+                            ["Angles"] = Angle(-10, 0, 0),
+                            ["Position"] = Vector(0, 0.15000000596046, 0),
+                            ["Scale"] = Vector(0.5, 0.0049999998882413, 0.0049999998882413),
+                            ["Color"] = Vector(0.15690000355244, 0.15690000355244, 0.15690000355244),
+                            ["Model"] = "models/holograms/hq_rcube_thin.mdl",
+                        },
+                    },
+                },
+                ["self"] = {
+                    ["Name"] = "Nose",
+                    ["Angles"] = Angle(0, 0, 170),
+                    ["Position"] = Vector(0, 8.8000001907349, -1.8999999761581),
+                    ["Scale"] = Vector(0.079999998211861, 0.029999999329448, 0.059999998658895),
+                    ["Color"] = Vector(0.15690000355244, 0.15690000355244, 0.15690000355244),
+                    ["Model"] = "models/holograms/cone.mdl",
+                },
+            },
+            [3] = {
+                ["children"] = {
+                },
+                ["self"] = {
+                    ["Name"] = "Left Eye",
+                    ["Angles"] = Angle(0, 20, 90),
+                    ["Position"] = Vector(-4, 7.3000001907349, 0),
+                    ["Scale"] = Vector(0.20000000298023, 0.20000000298023, 0.20000000298023),
+                    ["Color"] = Vector(0.15690000355244, 0.15690000355244, 0.15690000355244),
+                    ["Model"] = "models/holograms/hq_rcylinder_thick.mdl",
+                },
+            },
+            [4] = {
+                ["children"] = {
+                },
+                ["self"] = {
+                    ["Name"] = "Right Eye",
+                    ["Angles"] = Angle(0, -20, 90),
+                    ["Position"] = Vector(4, 7.3000001907349, 0),
+                    ["Scale"] = Vector(0.20000000298023, 0.20000000298023, 0.20000000298023),
+                    ["Color"] = Vector(0.15690000355244, 0.15690000355244, 0.15690000355244),
+                    ["Model"] = "models/holograms/hq_rcylinder_thick.mdl",
+                },
+            },
+            [5] = {
+                ["children"] = {
+                    [1] = {
+                        ["children"] = {
+                        },
+                        ["self"] = {
+                            ["Name"] = "Left Ear Out",
+                            ["Angles"] = Angle(0, 0, -3.5),
+                            ["Position"] = Vector(0, 0, 0),
+                            ["Scale"] = Vector(0.60000002384186, 1.1000000238419, 0.5),
+                            ["Color"] = Vector(0.85490000247955, 0.85490000247955, 0.85490000247955),
+                            ["Model"] = "models/holograms/hq_hdome_thick.mdl",
+                        },
+                    },
+                },
+                ["self"] = {
+                    ["Name"] = "Left Ear",
+                    ["Angles"] = Angle(-30, 0, 90),
+                    ["Position"] = Vector(-4, 3, 5.6999998092651),
+                    ["Scale"] = Vector(0.5, 1, 0.10000000149012),
+                    ["Color"] = Vector(1, 0.49799999594688, 0.49799999594688),
+                    ["Model"] = "models/holograms/hq_rcylinder_thick.mdl",
+                },
+            },
+        },
+        ["self"] = {
+            ["Name"] = "Head",
+            ["Angles"] = Angle(0, 0, 0),
+            ["Position"] = Vector(0, 15, 6.6999998092651),
+            ["Scale"] = Vector(1.7000000476837, 1.5, 1.5),
+            ["Color"] = Vector(0.85490000247955, 0.85490000247955, 0.85490000247955),
+            ["Model"] = "models/holograms/hq_sphere.mdl",
+        },
+    },
+}
+
+CatBody = {
+    [1] = {
+        ["children"] = {
+        },
+        ["self"] = {
+            ["Name"] = "Base",
+            ["Angles"] = Angle(0, 0, 0),
+            ["Position"] = Vector(0, 0, 0),
+            ["Scale"] = Vector(2, 2.7999999523163, 1.75),
+            ["Color"] = Vector(0.85490000247955, 0.85490000247955, 0.85490000247955),
+            ["Model"] = "models/holograms/hq_sphere.mdl",
+        },
+    },
+}
+
+CatTail = {
+    [1] = {
+        ["children"] = {
+            --[[[1] = {
+                ["children"] = {
+                },
+                ["self"] = {
+                    ["Name"] = "Tail Tip",
+                    ["Bone"] = "j 8",
+                    ["Angles"] = Angle(0, 0, 0),
+                    ["Position"] = Vector(0, 0, 0),
+                    ["Scale"] = Vector(0.25, 0.25, 0.25),
+                    ["Color"] = Vector(0.85490000247955, 0.85490000247955, 0.85490000247955),
+                    ["Model"] = "models/holograms/hq_sphere.mdl",
+                },
+            },]]
+        },
+        ["self"] = {
+            ["Name"] = "Tail",
+            ["Angles"] = Angle(0, 0, 50),
+            ["Position"] = Vector(0, -15, 4),
+            ["Scale"] = Vector(1, 1, 1),
+            ["Color"] = Vector(0.85490000247955, 0.85490000247955, 0.85490000247955),
+            ["Model"] = "models/pac/jiggle/base_jiggle_1.mdl",
+        },
+    },
+}
+
+CatLegBR = {
+    [1] = {
+        ["children"] = {
+            [1] = {
+                ["children"] = {
+                },
+                ["self"] = {
+                    ["Name"] = "Right Rear Paw",
+                    ["Angles"] = Angle(0, 0, 180),
+                    ["Position"] = Vector(0, 0, 0),
+                    ["Scale"] = Vector(0.60000002384186, 0.60000002384186, 2.25),
+                    ["Color"] = Vector(0.85490000247955, 0.85490000247955, 0.85490000247955),
+                    ["Model"] = "models/holograms/hq_dome.mdl",
+                },
+            },
+        },
+        ["self"] = {
+            ["Name"] = "Rear Right leg",
+            ["Angles"] = Angle(0, 0, 0),
+            ["Position"] = Vector(6, -11, -2),
+            ["Scale"] = Vector(0.60000002384186, 0.60000002384186, 0.60000002384186),
+            ["Color"] = Vector(0.85490000247955, 0.85490000247955, 0.85490000247955),
+            ["Model"] = "models/holograms/hq_sphere.mdl",
+        },
+    },
+}
+CatLegFR = {
+    [1] = {
+        ["children"] = {
+            [1] = {
+                ["children"] = {
+                },
+                ["self"] = {
+                    ["Name"] = "Front Right Paw",
+                    ["Angles"] = Angle(0, 0, 180),
+                    ["Position"] = Vector(0, 0, 0),
+                    ["Scale"] = Vector(0.60000002384186, 0.60000002384186, 2.25),
+                    ["Color"] = Vector(0.85490000247955, 0.85490000247955, 0.85490000247955),
+                    ["Model"] = "models/holograms/hq_dome.mdl",
+                },
+            },
+        },
+        ["self"] = {
+            ["Name"] = "Front Right Leg",
+            ["Angles"] = Angle(0, 0, 0),
+            ["Position"] = Vector(6, 9, -3),
+            ["Scale"] = Vector(0.60000002384186, 0.60000002384186, 0.40000000596046),
+            ["Color"] = Vector(0.85490000247955, 0.85490000247955, 0.85490000247955),
+            ["Model"] = "models/holograms/hq_sphere.mdl",
+        },
+    },
+}
+CatLegFL = {
+    [1] = {
+        ["children"] = {
+            [1] = {
+                ["children"] = {
+                },
+                ["self"] = {
+                    ["Name"] = "Front Left Paw",
+                    ["Angles"] = Angle(0, 0, 180),
+                    ["Position"] = Vector(0, 0, 0),
+                    ["Scale"] = Vector(0.60000002384186, 0.60000002384186, 2.25),
+                    ["Color"] = Vector(0.85490000247955, 0.85490000247955, 0.85490000247955),
+                    ["Model"] = "models/holograms/hq_dome.mdl",
+                },
+            },
+        },
+        ["self"] = {
+            ["Name"] = "Front Left Leg",
+            ["Angles"] = Angle(0, 0, 0),
+            ["Position"] = Vector(-6, 9, -3),
+            ["Scale"] = Vector(0.60000002384186, 0.60000002384186, 0.60000002384186),
+            ["Color"] = Vector(0.85490000247955, 0.85490000247955, 0.85490000247955),
+            ["Model"] = "models/holograms/hq_sphere.mdl",
+        },
+    },
+}
+CatLegBL = {
+    [1] = {
+        ["children"] = {
+            [1] = {
+                ["children"] = {
+                },
+                ["self"] = {
+                    ["Name"] = "Rear Left Paw",
+                    ["Angles"] = Angle(0, 0, 180),
+                    ["Position"] = Vector(0, 0, 0),
+                    ["Scale"] = Vector(0.60000002384186, 0.60000002384186, 2.25),
+                    ["Color"] = Vector(0.85490000247955, 0.85490000247955, 0.85490000247955),
+                    ["Model"] = "models/holograms/hq_dome.mdl",
+                },
+            },
+        },
+        ["self"] = {
+            ["Name"] = "Rear Left Leg",
+            ["Angles"] = Angle(0, 0, 0),
+            ["Position"] = Vector(-6, -11, -3),
+            ["Scale"] = Vector(0.60000002384186, 0.60000002384186, 0.60000002384186),
+            ["Color"] = Vector(0.85490000247955, 0.85490000247955, 0.85490000247955),
+            ["Model"] = "models/holograms/hq_sphere.mdl",
+        },
+    },
+}
