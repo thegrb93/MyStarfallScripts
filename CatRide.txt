@@ -3,6 +3,10 @@
 --@server
 --@include libs/CriticalPD.txt
 
+-- Requires the CriticalPD.txt which is also in this repository in a 'libs' folder to work
+-- Wire the Chair input to a prop_vehicle_prisoner_pod
+-- Wire the Base input to a models/hunter/blocks/cube05x1x05.mdl prop
+
 local criticalpd = require("libs/CriticalPD.txt")
 
 local ents = {}
