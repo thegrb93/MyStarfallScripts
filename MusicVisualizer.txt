@@ -24,11 +24,11 @@ bass.loadFile("sound/music/hl1_song10.mp3","3d",function(snd)
 		
 		render.pushMatrix(centerTransform)
 		local function fftToRadius(i) return 200-math.log10(i)*(fft[i] or 0)*1000 end
-		local startr = fftToRadius(1)
+		local startr = fftToRadius(2)
 		local lx, ly = startr, 0
-		for i=2, n do
+		for i=3, n do
 			local r = fftToRadius(i)
-			local theta = (i-1)*2*math.pi/n
+			local theta = (i-2)*2*math.pi/(n-1)
 			local x, y = r*math.cos(theta), r*math.sin(theta)
 			render.drawLine(x, y, lx, ly)
 			lx = x
@@ -37,6 +37,10 @@ bass.loadFile("sound/music/hl1_song10.mp3","3d",function(snd)
 		render.drawLine(startr, 0, lx, ly)
 		
 		render.popMatrix()
+		
+		render.setColor(Color(0, 0, 0, 255))
+		render.drawRect(507, 507, 10, 10)
+		
 		render.selectRenderTarget()
 		
 		render.setColor(Color(255, 255, 255, 255))
