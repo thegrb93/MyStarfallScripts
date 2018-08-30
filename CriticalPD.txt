@@ -15,8 +15,10 @@ function EntityCriticalPD.New(ent, translationGain, rotationGain)
 	self:refreshMassInertia()
 	self:setGain(translationGain, rotationGain)
 	self.targetPos = ent:getPos()
-	self.targetAng = ent:getAngles()
-	
+	self.targetAng = Matrix()
+	self.targetAng:setAngles(ent:getAngles())
+	self.targetVel = Vector()
+	self.targetAngVel = Vector()
 	return self
 end
 
@@ -24,6 +26,11 @@ function EntityCriticalPD:setTarget(pos, ang)
 	self.targetPos = pos
 	self.targetAng = Matrix()
 	self.targetAng:setAngles(ang)
+end
+
+function EntityCriticalPD:setTargetVel(vel, angvel)
+	self.targetVel = vel
+	self.targetAngVel = angvel
 end
 
 function EntityCriticalPD:setGain(translationGain, rotationGain)
@@ -47,22 +54,24 @@ function EntityCriticalPD:getInertiaFromAxis(axis)
 	return self.ixx*(1-axis[1]^2) + self.iyy*(1-axis[2]^2) + self.izz*(1-axis[3]^2)
 end
 
-function EntityCriticalPD:simulate()
+function EntityCriticalPD:simulateForce()
 	-- Calculate force
 	local x = self.targetPos - self.phys:localToWorld(self.masscenter)
-	local dx = -self.phys:getVelocity()
+	local dx = self.targetVel - self.phys:getVelocity()
 	local force = x*self.fk + dx*self.fc
 	self.phys:applyForceCenter(force*self.mass)
-	
+end
+
+function EntityCriticalPD:simulateAngForce()
 	-- Calculate torque
 	--local m = e:getBoneMatrix(0) Don't use this function, it's bugged. https://github.com/Facepunch/garrysmod-issues/issues/3507
 	local m = Matrix() m:setAngles(self.ent:getAngles())
 	local axis, ang = (self.targetAng*m:getInverseTR()):getAxisAngle()
 	local t = axis*math.deg(ang)
-	local dt = -self.phys:localToWorldVector(self.phys:getAngleVelocity())
-		
+	local dt = self.targetAngVel-self.phys:localToWorldVector(self.phys:getAngleVelocity())
+			
 	local torque = t*self.tk + dt*self.tc
-		
+			
 	-- Make sure torque isn't null vector or singularity will happen with torque:getNormalized()
 	if torque[1]~=0 or torque[2]~=0 or torque[3]~=0 then
 		local applytorque = torque*self:getInertiaFromAxis(torque:getNormalized())
@@ -71,21 +80,14 @@ function EntityCriticalPD:simulate()
 end
 
 
-wire.adjustInputs({"A"},{"entity"})
-hook.add("input","",function(k,v)
-	if k=="A" and isValid(v) then
-
-		local e = EntityCriticalPD.New(v, 200, 200)
-		hook.add("think","",function()
-			if isValid(e.ent) then
-				e:setTarget(chip():getPos()+chip():getUp()*100, chip():getAngles())
-				e:simulate()
-			else
-				hook.remove("think","")
-			end
-		end)
-
+function EntityCriticalPD:simulate()
+	if self.fk > 0 then
+		self:simulateForce()
 	end
-end)
+	
+	if self.tk > 0 then
+		self:simulateAngForce()
+	end
+end
 
-
+return EntityCriticalPD
