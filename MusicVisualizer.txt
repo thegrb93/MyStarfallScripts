@@ -1,0 +1,47 @@
+--@name Music Visualizer
+--@author Sparky
+--@client
+
+local buffers = {"RT", "RT2"}
+local buffernum = 1
+render.createRenderTarget("RT")
+render.createRenderTarget("RT2")
+local centerTransform = Matrix()
+centerTransform:setTranslation(Vector(512, 512, 0))
+
+bass.loadFile("sound/music/hl1_song10.mp3","3d",function(snd)
+	hook.add("render","",function()
+		snd:setPos(render.getScreenEntity():getPos())
+		local n = 64
+		local fft = snd:getFFT(n)
+
+		local nextbuffer = (buffernum%#buffers)+1
+		render.setRenderTargetTexture(buffers[buffernum])
+		render.selectRenderTarget(buffers[nextbuffer])
+		render.setColor(Color(255, 255, 255, 200))
+		render.drawTexturedRect(-15, -15, 1054, 1054)
+		render.setColor(Color((timer.curtime()*10+180)%360-180, 1, 1):hsvToRGB())
+		
+		render.pushMatrix(centerTransform)
+		local function fftToRadius(i) return 200-math.log10(i)*(fft[i] or 0)*1000 end
+		local startr = fftToRadius(1)
+		local lx, ly = startr, 0
+		for i=2, n do
+			local r = fftToRadius(i)
+			local theta = (i-1)*2*math.pi/n
+			local x, y = r*math.cos(theta), r*math.sin(theta)
+			render.drawLine(x, y, lx, ly)
+			lx = x
+			ly = y
+		end
+		render.drawLine(startr, 0, lx, ly)
+		
+		render.popMatrix()
+		render.selectRenderTarget()
+		
+		render.setColor(Color(255, 255, 255, 255))
+		render.setRenderTargetTexture(buffers[nextbuffer])
+		render.drawTexturedRect(0, 0, 512, 512)
+		buffernum = nextbuffer
+	end)
+end)
