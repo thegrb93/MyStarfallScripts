@@ -5,7 +5,7 @@
 local radius = 300
 local spacing = 80 --How far apart they need to be
 local lizards = 50
-local music = "https://www.dropbox.com/s/u9qo6tlob94l9ri/Spongebob%20Jellyfish%20Jam%20Louder.mp3?raw=1"
+local music = "https://dl.dropboxusercontent.com/s/u9qo6tlob94l9ri/Spongebob%20Jellyfish%20Jam%20Louder.mp3"
 local animation = "taunt_dance"
 local models = {
 "models/aeonpm/aeon.mdl",
