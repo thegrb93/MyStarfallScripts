@@ -6,32 +6,44 @@ local holos = {}
 if SERVER then
 
     local e = chip():isWeldedTo()
-    local meshes = e:getPhysicsObject():getMeshConvexes()
-    for i=1, #meshes do
-        holos[i] = holograms.create(e:getPos(), e:getAngles(), "models/Combine_Helicopter/helicopter_bomb01.mdl")
-        holos[i]:setMaterial("models/wireframe")
-        holos[i]:setParent(e)
+    local holos = {}
+    local stream = bit.stringstream()
+    
+    local nholos = e:getPhysicsObjectCount()
+    stream:writeInt32(nholos)
+    for i=0, nholos-1 do
+        local phys = e:getPhysicsObjectNum(i)
+        local convexes = phys:getMeshConvexes()
+        stream:writeInt32(#convexes)
+        for k, v in pairs(convexes) do
+            local holo = holograms.create(phys:getPos(), phys:getAngles(), "models/Combine_Helicopter/helicopter_bomb01.mdl")
+            holo:setMaterial("models/wireframe")
+            holo.bone = phys
+            
+            stream:writeInt16(holo:entIndex())
+            stream:writeInt32(#v)
+            for o=1, #v do
+                local pos = v[o].pos
+                stream:writeFloat(pos[1])
+                stream:writeFloat(pos[2])
+                stream:writeFloat(pos[3])
+            end
+            
+            holos[#holos+1] = holo
+        end
     end
-    hook.add("net","",function(name,len,pl)    
-        local name = pl:getName()
-        local i = 1
-        hook.add("think",name,function()
-            if i>#meshes or not isValid(pl) then
-                hook.remove("think",name)
-                return
-            end
-            local m = meshes[i]
-            if net.getBytesLeft()>(60+12*#m) then
-                net.start("")
-                net.writeEntity(holos[i])
-                net.writeUInt(#m, 32)
-                for o=1, #m do
-                    net.writeVector(m[o].pos)
-                end
-                net.send(pl)
-                i = i + 1
-            end
-        end)
+    stream = stream:getString()
+    
+    hook.add("think","",function()
+        for k, v in pairs(holos) do
+            v:setPos(v.bone:getPos())
+            v:setAngles(v.bone:getAngles())
+        end
+    end)
+    hook.add("net","",function(name,len,pl)
+        net.start("")
+        net.writeStream(stream)
+        net.send(pl)
     end)
 
 else
@@ -40,22 +52,30 @@ else
     net.send()
     
     hook.add("net","",function(n)
-        local e = net.readEntity()
-        local m = {}
-        local mins, maxs = Vector(math.huge), Vector(-math.huge)
-        for o=1, net.readUInt(32) do
-            local pos = net.readVector()
-            m[o] = {pos = pos}
-            if pos[1] < mins[1] then mins[1] = pos[1] end
-            if pos[2] < mins[2] then mins[2] = pos[2] end
-            if pos[3] < mins[3] then mins[3] = pos[3] end
-            if pos[1] > maxs[1] then maxs[1] = pos[1] end
-            if pos[2] > maxs[2] then maxs[2] = pos[2] end
-            if pos[3] > maxs[3] then maxs[3] = pos[3] end
-        end
-        
-        e:setHologramMesh(mesh.createFromTable(m))
-        e:setHologramRenderBounds(mins, maxs)
+        net.readStream(function(data)
+            local stream = bit.stringstream(data)
+            for i=1, stream:readUInt32() do
+                for o=1, stream:readUInt32() do
+                
+                    local e = entity(stream:readUInt16())
+                    local mins, maxs = Vector(math.huge), Vector(-math.huge)
+                    local m = {}
+                    for p=1, stream:readUInt32() do
+                        local pos = Vector(stream:readFloat(), stream:readFloat(), stream:readFloat())
+                        m[p] = {pos = pos}
+                        if pos[1] < mins[1] then mins[1] = pos[1] end
+                        if pos[2] < mins[2] then mins[2] = pos[2] end
+                        if pos[3] < mins[3] then mins[3] = pos[3] end
+                        if pos[1] > maxs[1] then maxs[1] = pos[1] end
+                        if pos[2] > maxs[2] then maxs[2] = pos[2] end
+                        if pos[3] > maxs[3] then maxs[3] = pos[3] end
+                    
+                    end
+                    e:setHologramMesh(mesh.createFromTable(m))
+                    e:setHologramRenderBounds(mins, maxs)
+                    
+                end
+            end
+        end)
     end)
-    
 end
