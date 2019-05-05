@@ -2,19 +2,21 @@
 --@author Sparky
 --@shared
 
-local radius = 300
+local radius = 150
 local spacing = 80 --How far apart they need to be
-local lizards = 50
-local music = "https://dl.dropboxusercontent.com/s/u9qo6tlob94l9ri/Spongebob%20Jellyfish%20Jam%20Louder.mp3"
+local lizards = 20
+local speed = 0.9
+--local music = "https://dl.dropboxusercontent.com/s/4f5rb3j3jl1o39s/A%20Hat%20in%20Time%20B-Side%20-%20101%20Collapsing%20Rift.mp3"
+local music = "https://dl.dropboxusercontent.com/s/rsuv93lbeswu339/A%20Hat%20in%20Time%20OST%20-%2025%20Picture%20Perfect.mp3"
 local animation = "taunt_dance"
 local models = {
 "models/aeonpm/aeon.mdl",
---[["models/mailer/characters/wow_arakkoa.mdl",
+"models/mailer/characters/wow_arakkoa2.mdl",
 "models/player/mikier/renamon.mdl",
 "models/player/pokemon/blazikenpm.mdl",
 "models/highdragon_player/hidrgpl.mdl",
-"models/player/stenli/lycan_werewolf.mdl",
-"models/player/shi/awoo.mdl",]]
+--"models/player/stenli/lycan_werewolf.mdl",
+"models/player/shi/awoo.mdl",
 }
 
 if SERVER then
@@ -48,23 +50,24 @@ if SERVER then
     
     --Create dancing holograms
     local chipPos = chip():getPos()
-    local holos, postbl = {}, {}
+    local holos, postbl = {}, {Vector()}
     for i=1, lizards do
         local pos = randPos(postbl, radius)
-        local holo = holograms.create(chipPos+pos, Angle(0,math.random()*360,0), models[math.random(#models)])
+        local model = models[math.random(#models)]
+        local holo = holograms.create(chipPos+pos, Angle(0,math.random()*360,0), model)
         for o=1, 7 do holo:setBodygroup(o, 1) end
-        holo:setAnimation(animation, 0.05)
+        holo:setAnimation(animation, 0.05, speed)
         holos[i] = holo
-        postbl[i] = pos
+        postbl[#postbl+1] = pos
     end
     
-    local animLen = holos[1]:getAnimationLength()*0.9
+    local animLen = holos[1]:getAnimationLength()*0.90/speed
     function loopBack()
-        for k, v in ipairs(holos) do v:setAnimation(animation, 0.95, -1) end
+        for k, v in ipairs(holos) do v:setAnimation(animation, 0.95, -speed) end
         timer.simple(animLen, loopForward)
     end
     function loopForward()
-        for k, v in ipairs(holos) do v:setAnimation(animation, 0.05, 1) end
+        for k, v in ipairs(holos) do v:setAnimation(animation, 0.05, speed) end
         timer.simple(animLen, loopBack)
     end
     timer.simple(animLen, loopBack)
