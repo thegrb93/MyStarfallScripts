@@ -27,18 +27,25 @@ local function noise(x)
     return mix( hash( ix ), hash( ix+1 ), fx*fx*(3-2*fx))
 end
 
-local squaresize = 512/8
+local squaresize = 1024/8
 local start = 0
-local endsize = 512-squaresize
+local endsize = 1024-squaresize
 
 local squaresize2 = squaresize/2
 local start2 = endsize/2-squaresize2
 local endsize2 = endsize/2+squaresize
 
 local freq = 2
-local lights = setmetatable({},{__index=function(t,k) t[k]=light.create(Vector(),256,7,Color(0,0,0)) return t[k] end})
+local lights = setmetatable({},{__index=function(t,k) t[k]=light.create(Vector(),300,5,Color(0,0,0)) return t[k] end})
+local scr = chip()
+render.createRenderTarget("floor")
 hook.add("render","",function()
-    local scr = render.getScreenEntity()
+    scr = render.getScreenEntity()
+    render.setRenderTargetTexture("floor")
+    render.drawTexturedRectFast(0,0,512,512)
+end)
+hook.add("renderoffscreen","",function()
+    render.selectRenderTarget("floor")
     local time = timer.curtime()*freq
     local i = 1
     for x=start, endsize, squaresize do
@@ -50,7 +57,7 @@ hook.add("render","",function()
             i = i + 1
             
             if i%4==0 then
-                local wpos = scr:localToWorld(Vector((x+squaresize2-256)/256*189.791, (y+squaresize2-256)/256*189.791, 2))
+                local wpos = scr:localToWorld(Vector((x+squaresize2-512)/512*189.791, (y+squaresize2-512)/512*189.791, 2))
                 lights[i]:setPos(wpos)
                 lights[i]:setColor(col)
                 lights[i]:draw()
@@ -66,6 +73,7 @@ hook.add("render","",function()
             i = i + 1
         end
     end
+    render.selectRenderTarget()
 end)
 
 hook.add("net","",function(n)
