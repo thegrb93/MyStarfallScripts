@@ -1,0 +1,40 @@
+--@name Dakimakura
+--@author thegrb93 aka Sparky
+--@client
+
+local ents = {}
+find.all(function(e)
+    if e:isValid() and e:getOwner()==owner() and e:getModel()=="models/props_c17/furnituremattress001a.mdl" then
+        ents[#ents+1] = {e:getPos():getDistanceSqr(chip():getPos()), e}
+    end
+end)
+table.sort(ents, function(a,b) return a[1] < b[1] end)
+local ent = ents[1][2]
+
+local orig = render.getTextureID("models/props_c17/furnituremattress001a")
+local tex1 = render.getTextureID("https://dl.dropboxusercontent.com/s/nkzh5kbjwvq3hwg/salazle1.png")
+local tex2 = render.getTextureID("https://dl.dropboxusercontent.com/s/ygb1j67a2zxa8oo/salazle2.png")
+
+render.createRenderTarget("rt")
+local m = material.create("VertexLitGeneric")
+m:setTextureRenderTarget("$basetexture", "rt")
+
+local function doRender()
+    render.selectRenderTarget("rt")
+    
+    render.setTexture(orig)
+    render.drawTexturedRect(0,0,1024,1024)
+    
+    local pos, ang = ent:getBonePosition(0)
+    local tex = (ang:getRight():dot(player():getAimVector())<0) and tex1 or tex2
+    
+    render.setTexture(tex)
+    local rot = Matrix() rot:setAngles(Angle(0,90,0))
+    render.pushMatrix(rot)
+    render.drawTexturedRectUV(0, -720, 1024, 720, 0.1369140625, 0, 0.8630859375, 1)
+    render.popMatrix()
+
+    render.selectRenderTarget()
+    ent:setMaterial("!"..m:getName())
+end
+hook.add("renderoffscreen","",doRender)
