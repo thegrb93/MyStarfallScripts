@@ -1,0 +1,101 @@
+--@name Servo
+--@author Sparky
+--@server
+--@include libs/Class.txt
+
+-- The middleclass library. https://github.com/kikito/middleclass/blob/master/middleclass.lua
+local class = require("libs/Class.txt")
+
+local Servo = class('Servo')
+
+local function getBasis(vec)
+    if vec.z < -0.9999999 then
+        return Vector( 0.0, -1.0, 0.0), Vector(-1.0, 0.0, 0.0)
+    end
+    local a = 1.0/(1.0 + vec.z)
+    local b = -vec.x*vec.y*a
+    return Vector(1.0 - vec.x*vec.x*a, b, -vec.x), Vector(b, 1.0 - vec.y*vec.y*a, -vec.y) 
+end
+
+local function angleDiff(axis, vec1, vec2)
+    local D = math.asin(math.clamp(axis.x*(vec1.y*vec2.z - vec1.z*vec2.y) + axis.y*(vec1.z*vec2.x - vec1.x*vec2.z) + axis.z*(vec1.x*vec2.y - vec1.y*vec2.x),-1,1))
+    if vec1:dot(vec2)>0 then
+        return D
+    else
+        if D>0 then return math.pi-D else return -math.pi-D end
+    end
+end
+
+local function angNorm(ang)
+    return (ang+math.pi)%(math.pi*2)-math.pi
+end
+
+function Servo:initialize(ent, pgain, dgain, ang, axisindex)
+    self.pgain = pgain
+    self.dgain = dgain
+    if axisindex == nil then axisindex = 1 end
+    if ang == nil then ang = 0 end
+    for k, v in ipairs(constraint.getTable(ent)) do
+        if v.Type == "Axis" then
+            axisindex = axisindex - 1
+            if axisindex == 0 then
+                self.axis = v
+            end
+        end
+    end
+    if not self.axis then error("Failed to get axis") end
+    self.axisvec = (self.axis.LocalAxis - self.axis.LPos1):getNormalized()
+    
+    self.ent1 = ent
+    self.phys1 = self.ent1:getPhysicsObjectNum(self.axis.Bone1)
+    local basis = getBasis(self.phys1:localToWorldVector(self.axisvec))
+    self.entbasis1 = self.phys1:worldToLocalVector(basis)
+    
+    self.ent2 = self.axis.Ent1 == ent and self.axis.Ent2 or self.axis.Ent1
+    if isValid(self.ent2) then
+        self.phys2 = self.ent2:getPhysicsObjectNum(self.axis.Bone2)
+        self.entbasis2 = self.phys2:worldToLocalVector(basis)
+    else
+        self.entbasis2 = basis
+    end
+    
+    local axis1, axis2 = self:GetAxes()
+    self.offset = ang + angleDiff(basis, axis1, axis2)
+    self.Angle = ang
+    self.AngVel = 0
+end
+
+function Servo:GetAxes()
+    local otheraxis
+    if self.phys2 then
+        otheraxis = self.phys2:localToWorldVector(self.entbasis2)
+    else
+        otheraxis = self.entbasis2
+    end
+    return self.phys1:localToWorldVector(self.entbasis1), otheraxis
+end
+
+function Servo:GetAxisVels()
+    local otheraxis
+    if self.phys2 then
+        otheraxis = self.phys2:localToWorldVector(self.phys2:getAngleVelocity())
+    else
+        otheraxis = Vector()
+    end
+    return self.phys1:localToWorldVector(self.phys1:getAngleVelocity()), otheraxis
+end
+
+function Servo:Calc()
+    local basis = self.phys1:localToWorldVector(self.axisvec)
+    local axis1, axis2 = self:GetAxes()
+    local daxis1, daxis2 = self:GetAxisVels()
+    local p = math.deg(angNorm(self.Angle + angleDiff(basis, axis1, axis2) - self.offset))
+    local d = daxis2:dot(basis) - daxis1:dot(basis) + math.deg(self.AngVel)
+    local torque = basis*(p*self.pgain + d*self.dgain)
+    self.phys1:applyTorque(torque)
+    if self.phys2 then
+        self.phys2:applyTorque(-torque)
+    end
+end
+
+return Servo
