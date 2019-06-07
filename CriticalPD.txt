@@ -28,6 +28,15 @@ function EntityCriticalPD:setTarget(pos, ang)
 	self.targetAng:setAngles(ang)
 end
 
+function EntityCriticalPD:setTargetPos(pos)
+	self.targetPos = pos
+end
+
+function EntityCriticalPD:setTargetAng(ang)
+	self.targetAng = Matrix()
+	self.targetAng:setAngles(ang)
+end
+
 function EntityCriticalPD:setTargetVel(vel, angvel)
 	self.targetVel = vel
 	self.targetAngVel = angvel
@@ -79,13 +88,24 @@ function EntityCriticalPD:simulateAngForce()
 	end
 end
 
+function EntityCriticalPD:simulateAngForceCustomError(t, dt)
+	-- Calculate torque
+	local torque = t*self.tk + dt*self.tc
+			
+	-- Make sure torque isn't null vector or singularity will happen with torque:getNormalized()
+	if torque[1]~=0 or torque[2]~=0 or torque[3]~=0 then
+		local applytorque = torque*self:getInertiaFromAxis(torque:getNormalized())
+		self.phys:applyTorque(applytorque)
+	end
+end
+
 
 function EntityCriticalPD:simulate()
-	if self.fk > 0 then
+	if self.fk ~= 0 then
 		self:simulateForce()
 	end
 	
-	if self.tk > 0 then
+	if self.tk ~= 0 then
 		self:simulateAngForce()
 	end
 end
