@@ -15,8 +15,7 @@ function EntityCriticalPD.New(ent, translationGain, rotationGain)
 	self:refreshMassInertia()
 	self:setGain(translationGain, rotationGain)
 	self.targetPos = ent:getPos()
-	self.targetAng = Matrix()
-	self.targetAng:setAngles(ent:getAngles())
+	self.targetAng = ent:getMatrix()
 	self.targetVel = Vector()
 	self.targetAngVel = Vector()
 	return self
@@ -73,8 +72,7 @@ end
 
 function EntityCriticalPD:simulateAngForce()
 	-- Calculate torque
-	--local m = e:getBoneMatrix(0) Don't use this function, it's bugged. https://github.com/Facepunch/garrysmod-issues/issues/3507
-	local m = Matrix() m:setAngles(self.ent:getAngles())
+	local m = self.ent:getMatrix()
 	local axis, ang = (self.targetAng*m:getInverseTR()):getAxisAngle()
 	local t = axis*math.deg(ang)
 	local dt = self.targetAngVel-self.phys:localToWorldVector(self.phys:getAngleVelocity())
