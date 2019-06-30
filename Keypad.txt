@@ -1,0 +1,147 @@
+--@name
+--@author
+--@shared
+--@include libs/Class.txt
+
+-- To use, simply place the chip and link a starfall screen to it
+
+local class = require("libs/Class.txt")
+local keypad = class("keypad")
+local button = class("button")
+
+if SERVER then
+	function keypad:initialize()
+	end
+	
+	function keypad:enter(password)
+		if not self.password then self.password = password end
+		local success = password == self.password
+		if success then
+			wire.ports.Success = 1
+			timer.simple(2, function() wire.ports.Success = 0 end)
+		else
+			wire.ports.Fail = 1
+			timer.simple(2, function() wire.ports.Fail = 0 end)
+		end
+		net.start("password")
+		net.writeBit(success)
+		net.send()
+	end
+else
+	function keypad:initialize()
+		self.entry = {}
+		self.waiting = false
+		self.color = Color(255,255,255)
+		self.buttons = {}
+		for x=512/4,512-1,512/4 do
+			for y=512/4,512-1,512/4 do
+				self.buttons[#self.buttons+1] = button:new(x,y)
+			end
+		end
+	end
+end
+
+function keypad:reset()
+	self.color = Color(255,255,255)
+	self.entry = {}
+	self.waiting = false
+	for i=1, #self.buttons do
+		self.buttons[i].used = false
+	end
+end
+
+function keypad:recvConfirm(success)
+	if success then self.color = Color(0,255,0) else self.color = Color(255,0,0) end
+	timer.simple(1,function() self:reset() end)
+end
+
+function keypad:draw()
+	if not self.waiting then
+		if not self.using and player():keyDown(IN_KEY.USE) and player():getEyeTrace().Entity == render.getScreenEntity() then
+			self.using = true
+		end
+		if self.using then
+			if player():keyDown(IN_KEY.USE) then
+				local x,y = render.cursorPos(self.user)
+				if x and y then
+					if #self.entry>0 then
+						local b = self.buttons[self.entry[#self.entry]]
+						render.drawLine(b.x, b.y, x, y)
+					end
+					for i=1, #self.buttons do
+						if self.buttons[i]:select(x,y) then
+							self.entry[#self.entry+1] = i
+						end
+					end
+				end
+			else
+				self.using = false
+				self.waiting = true
+				net.start("password")
+				net.writeString(table.concat(self.entry))
+				net.send()
+			end
+		end
+	end
+	render.setColor(self.color)
+	for i=1, #self.entry-1 do
+		local b1, b2 = self.buttons[self.entry[i]], self.buttons[self.entry[i+1]]
+		render.drawLine(b1.x, b1.y, b2.x, b2.y)
+	end
+	for i=1, #self.buttons do
+		self.buttons[i]:draw()
+	end
+end
+
+function button:initialize(x,y)
+	self.x = x
+	self.y = y
+	self.blip = 0
+	self.used = false
+end
+
+function button:select(ox, oy)
+	if not self.used and (ox-self.x)^2+(oy-self.y)^2 < 1500 then
+		self.used = true
+		self.blip = timer.curtime()+0.5
+		return true
+	end
+	return false
+end
+
+function button:draw()
+	local blipdiff = self.blip-timer.curtime()
+	if blipdiff>0 then
+		render.drawCircle(self.x,self.y,20+(10/0.5)*blipdiff)
+	else
+		render.drawCircle(self.x,self.y,20)
+	end
+end
+
+local mykeypad = keypad:new()
+if SERVER then
+	wire.adjustOutputs({"Success","Fail"},{"normal","normal"})
+	net.receive("password",function() mykeypad:enter(net.readString()) end)
+else
+	hook.add("render","",function() mykeypad:draw() end)
+	net.receive("password",function() mykeypad:recvConfirm(net.readBit()~=0) end)
+
+	render.createRenderTarget("circle")
+	hook.add("renderoffscreen","",function()
+		render.selectRenderTarget("circle")
+		local poly = {}
+		for i=1, 360 do
+			local theta = i*math.pi/180
+			poly[i] = {x=math.cos(theta)*512+512, y=math.sin(theta)*512+512}
+		end
+		render.clear(Color(0,0,0,0))
+		render.drawPoly(poly)
+		render.selectRenderTarget()
+
+		hook.remove("renderoffscreen","")
+	end)
+	function render.drawCircle(x,y,r)
+		render.setRenderTargetTexture("circle")
+		render.drawTexturedRect(x-r,y-r,2*r,2*r)
+	end
+end
