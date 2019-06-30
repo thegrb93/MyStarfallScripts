@@ -18,9 +18,11 @@ if SERVER then
 		local success = password == self.password
 		if success then
 			wire.ports.Success = 1
+			chip():emitSound("buttons/button24.wav")
 			timer.simple(2, function() wire.ports.Success = 0 end)
 		else
 			wire.ports.Fail = 1
+			chip():emitSound("buttons/button8.wav")
 			timer.simple(2, function() wire.ports.Fail = 0 end)
 		end
 		net.start("password")
