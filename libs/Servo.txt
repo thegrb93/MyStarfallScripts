@@ -1,10 +1,6 @@
 --@name Servo
 --@author Sparky
 --@server
---@include libs/Class.txt
-
--- The middleclass library. https://github.com/kikito/middleclass/blob/master/middleclass.lua
-local class = require("libs/Class.txt")
 
 local Servo = class('Servo')
 

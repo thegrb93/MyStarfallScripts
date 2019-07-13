@@ -1,11 +1,9 @@
 --@name
 --@author
 --@shared
---@include libs/Class.txt
 
 -- To use, simply place the chip and link a starfall screen to it
 
-local class = require("libs/Class.txt")
 local keypad = class("keypad")
 local button = class("button")
 

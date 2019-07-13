@@ -5,8 +5,9 @@
 -- This class provides critically damped position and angle tracking to an entity invarient to the entity's mass/inertia or server frametime
 -- You can adjust the gains to anything you want, higher gains just make it reach the target faster
 
-local EntityCriticalPD, EntityCriticalPDMeta = {}, {} EntityCriticalPDMeta.__index = EntityCriticalPD
-function EntityCriticalPD.New(ent, translationGain, rotationGain)
+local EntityCriticalPD = class("EntityCriticalPD")
+
+function EntityCriticalPD:initialize(ent, translationGain, rotationGain)
 	local self = setmetatable({}, EntityCriticalPDMeta)
 
 	self.ent = ent
