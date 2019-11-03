@@ -4,14 +4,17 @@
 
 --Load an image url, reads it, and builds a pixel matrix out of props with them
 
---local url = "https://dl.dropboxusercontent.com/s/jwjat5kkbz4hwtw/sprite2.png"
---local url = "https://dl.dropboxusercontent.com/s/50kt65i17n4j4mv/sprite3.png"
 local url = "https://dl.dropboxusercontent.com/s/aqj4jaudbmjivoi/sprite4.png"
+--local url = "https://dl.dropboxusercontent.com/s/50kt65i17n4j4mv/sprite3.png?dl=0"
 
 -- Adjust these to change the pixel props
 local pixel = "models/hunter/blocks/cube05x05x025.mdl"
 local pixelAngle = Angle(90,90,0)
 local pixelSize = 23.725
+
+--[[local pixel = "models/jaanus/wiretool/wiretool_pixel_sml.mdl"
+local pixelAngle = Angle(90,90,0)
+local pixelSize = 1.908]]
 
 if SERVER then
     hook.add("net","",function(n)
@@ -32,6 +35,7 @@ if SERVER then
                 end
                 i = 1
                 timer.create("SpawnProps", 0, 0, function()
+                    if quotaAverage()>0.1*quotaMax() then return end
                     if i>#props then timer.remove("SpawnProps") return end
                     local p = props[i]
                     local e = prop.create(p.pos, pixelAngle, pixel, true)
@@ -45,7 +49,8 @@ if SERVER then
         end
     end)
 elseif player()==owner() then
-    render.getTextureID(url, function(t,_,w,h)
+    local w, h
+    render.createMaterial(url, function(t,_,w_,h_) w=w_ h=h_ end, function(t,_)
         if not t then print("Failed to load url "..url) return end
         hook.add("renderoffscreen","",function()
             render.selectRenderTarget(t:getName())
