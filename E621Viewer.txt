@@ -1,0 +1,405 @@
+--@name E621Viewer
+--@author Sparky
+--@shared 
+
+-- Just connect a starfall screen and wire a wire_keyboard to the chip.
+-- Then type in e621 search tags and press enter.
+-- Press use on an image to zoom in or on the next/prev button to switch pages.
+
+function net.writeLinks(links)
+    if #links>0 then
+        local linkData = fastlz.compress(table.concat(links,"\0"))
+        net.writeUInt(#linkData,32)
+        net.writeData(linkData,#linkData)
+    else
+        net.writeUInt(0,32)
+    end
+end
+
+function net.readLinks()
+    local linkSize = net.readUInt(32)
+    if linkSize>0 then
+        local linkData = fastlz.decompress(net.readData(linkSize))
+        if linkData then
+            return string.split(linkData, "\0")
+        else
+            return {}
+        end
+    else
+        return {}
+    end
+end
+
+if CLIENT then    
+    local requests = {}
+    local loading = {}
+    local function http_reset()
+        requests = {}
+        loading = {}
+        hook.remove("think","requests")
+    end
+    local function http_doneloading()
+        return next(loading)==nil and #requests==0
+    end
+    local function http_safeget(...)
+        requests[#requests+1] = {...}
+        hook.add("think","requests",function()
+            if http.canRequest() then
+                local request = table.remove(requests,1)
+                if request then
+                    loading[request] = true
+                    http.get(request[1], function(...)
+                        if loading[request] then
+                            loading[request] = nil
+                            request[2](...)
+                        end
+                    end, function(...)
+                        if loading[request] then
+                            loading[request] = nil
+                            if request[3] then request[3](...) end
+                        end
+                    end)
+                else
+                    hook.remove("think","requests")
+                end
+            end
+        end)
+    end
+    
+    local browser = class("browser")
+    local mybrowser
+    local image = class("image")
+    function browser:initialize()
+        self.pagesloaded = 0
+        self.page = 1
+        self.noresults = false
+        self.links = {}
+        self.images = {}
+        self.sortedimages = {}
+        for i=1, 16 do
+            self.images[i] = image:new(i, ((i-1)%4)*128, math.floor((i-1)/4)*128)
+            self.sortedimages[i] = self.images[i]
+        end
+        self.search = ""
+    end
+    
+    function browser:used(pl,x,y)
+        if y>=494 then
+            if x>400 then
+                if player()==pl then
+                    net.start("nextpage") net.send()
+                end
+            elseif x<112 then
+                if player()==pl then
+                    net.start("prevpage") net.send()
+                end
+            end
+            return
+        end
+        x = math.floor(x/128)
+        y = math.floor(y/128)
+        local index = y*4+x+1
+        
+        for i, image in ipairs(self.images) do
+            if i==index then
+                image:toggleZoom()
+            else
+                image:zoomOut()
+            end
+        end
+    end
+    
+    function browser:startsearch()
+        http_reset() -- All current requests get cancelled
+        self.pagesloaded = 0
+        self.page = 1
+        self.noresults = false
+        self.links = {}
+        self.searching = self.search
+        self.search = ""
+        if player()==owner() then
+            mybrowser:loadPage()
+        end
+    end
+    
+    function browser:loadPage()
+        if not http_doneloading() or self.noresults or self.page*16 < #self.links-32 then return end
+        
+        local links = {}
+        function sendLinks()
+            net.start("gotlinks")
+            net.writeLinks(links)
+            net.send()
+        end
+        
+        http_safeget("https://e621.net/post/index/"..(self.pagesloaded + 1).."/"..self.searching, function(body)
+            local nextlinks = {}
+            string.gsub(body, "span.-class=\"thumb\".-a href=\"(.-)\"", function(a) nextlinks[#nextlinks+1]=a end)
+            if #nextlinks==0 then self.noresults = true return end
+            self.pagesloaded = self.pagesloaded + 1
+            for _, v in ipairs(nextlinks) do
+                http_safeget("https://e621.net"..v, function(body)
+                    local _1, _2, downloadLink = string.find(body, "(%b\"\")>Download</a>")
+                    if downloadLink then
+                        downloadLink = string.sub(downloadLink, 2, -2)
+                        local ext = string.sub(downloadLink, -3)
+                        if not (ext=="swf" or ext=="ebm") then
+                            links[#links + 1] = downloadLink
+                            if #links == 16 then
+                                sendLinks()
+                                links = {}
+                            end
+                        end
+                    end
+                    if http_doneloading() then
+                        sendLinks()
+                    end
+                end,
+                function()
+                    if http_doneloading() then
+                        sendLinks()
+                    end
+                end)
+            end
+        end)
+    end
+    
+    function browser:setPage(page)
+        self.page = page
+        local linkstart = (self.page-1)*16
+        for k, v in pairs(self.images) do
+            v:loadImage(self.links[linkstart + k])
+        end
+        if player()==owner() then
+            mybrowser:loadPage()
+        end
+    end
+    
+    function browser:gotLinks(links)
+        local linkcount = #self.links
+        table.add(self.links, links)
+        if linkcount < self.page*16 then
+            self:setPage(self.page)
+        end
+        if player()==owner() then
+            mybrowser:loadPage()
+        end
+    end
+    
+    function browser:draw()
+        render.setColor(Color(255,255,255,255))
+        table.sort(self.sortedimages, function(a,b) return a.interp < b.interp end)
+        for _, v in ipairs(self.sortedimages) do
+            v:draw()
+        end
+        render.setColor(Color(0,0,0,255))
+        render.drawRect(0, 494, 512, 18)
+        if #self.search>0 then
+            render.drawRect(0, 0, 512, 18)
+        end
+        render.setColor(Color(255,255,255,255))
+        render.drawText(256, 495, "Press use to zoom in/out.", 1)
+        if self.page > 1 then
+            render.drawText(50, 495, "<-Prev", 1)
+        end
+        if self.page*16 < #self.links then
+            render.drawText(462, 495, "Next->", 1)
+        end
+        render.drawText(20, 1, self.search)
+    end
+    
+    image.loadingMaterial = render.createMaterial("expression 2/cog")
+    function image:initialize(i,x,y)
+        self.i = i
+        self.x = x
+        self.y = y
+        self.zoomreverse = true
+        self.zoomtime=0
+        self.interp = 0
+        self.imagematerial = material.create("UnlitGeneric")
+        self.material = image.loadingMaterial
+    end
+    
+    local function forwardTime(image)
+        local x = math.min((timer.curtime()-image.zoomtime)/0.5,1)
+        local y = 1-math.sqrt(x)
+        local x2 = y^2
+        image.zoomtime = timer.curtime()-x2*0.5
+    end
+    
+    local function reverseTime(image)
+        local x = math.min((timer.curtime()-image.zoomtime)/0.5,1)
+        local y = math.sqrt(x)
+        local x2 = (1-y)^2
+        image.zoomtime = timer.curtime()-x2*0.5
+    end
+    
+    function image:toggleZoom()
+        self.zoom = true
+        self.zoomreverse = not self.zoomreverse
+        if self.zoomreverse then
+            reverseTime(self)
+        else
+            forwardTime(self)
+        end
+    end
+    
+    function image:zoomOut()
+        if self.zoom and not self.zoomreverse then
+            self.zoomreverse = true
+            reverseTime(self)
+        end
+    end
+    
+    function image:draw()
+        local x, y, w, h
+        if self.zoom and self.material ~= self.loadingMaterial then
+            self.interp = math.min((timer.curtime()-self.zoomtime)/0.5,1)
+            if self.zoomreverse then
+                self.interp = 1-math.sqrt(self.interp)
+                if self.interp==0 then self.zoom = false end
+            else
+                self.interp=math.sqrt(self.interp)
+            end
+            x, y, w, h = self.x-self.x*self.interp, self.y-self.y*self.interp, 128+384*self.interp, 128+384*self.interp
+        else
+            x, y, w, h = self.x, self.y, 128, 128
+        end
+        render.setMaterial(self.material)
+        if self.material == image.loadingMaterial then
+            local mat = Matrix()
+            local sin = math.sin(timer.curtime()*5+self.i)*10
+            mat:translate(Vector(x+64, y+64, 0))
+            mat:rotate(Angle(0,math.sin(timer.curtime()*5+self.i)*10,0))
+            mat:translate(Vector(-64, -64, 0))
+            render.pushMatrix(mat)
+            render.drawTexturedRect(0, 0, w, h)
+            render.popMatrix()
+        else
+            render.drawTexturedRect(x, y, w, h)
+        end
+    end
+    
+    function image:loadImage(link)
+        self.material = image.loadingMaterial
+        if not link then return end
+        self.imagematerial:setTextureURL("$basetexture", link, function(tx,url,w,h,layout)
+            if not tx then return end
+            if w>h then
+                h = h*1024/w
+                w = 1024
+            else
+                w = w*1024/h
+                h = 1024
+            end
+            pcall(layout, 512 - w/2, 512 - h/2, w, h)
+        end,
+        function()
+            self.material = self.imagematerial
+        end)
+    end
+    
+    mybrowser = browser:new()
+    net.receive("gotlinks", function()
+        mybrowser:gotLinks(net.readLinks())
+    end)
+    
+    net.receive("page", function()
+        mybrowser:setPage(net.readUInt(16))
+    end)
+
+    net.receive("search", function()
+        local enter = net.readBool()
+        mybrowser.search = net.readString()
+        if enter then
+            mybrowser:startsearch()
+        end
+    end)
+    
+    net.receive("init", function()
+        local page = net.readUInt(16)
+        mybrowser.search = net.readString(search)
+        if linkData and #linkData>0 then
+            mybrowser.links = net.readLinks()
+            mybrowser:setPage(page)
+        end
+    end)
+    net.start("init") net.send()
+    
+    hook.add("starfallused","",function(ply, screen)
+        local ok, x, y = pcall(render.cursorPos, ply, screen)
+        if not (ok and x and y) then return end
+        mybrowser:used(ply,x,y)
+    end)
+    
+    hook.add("render","screen",function() mybrowser:draw() end)
+else
+    local links, page, search, searchstr
+    local function reset()
+        links = {}
+        page = 1
+        search = ""
+    end
+    reset()
+
+    net.receive("gotlinks", function()
+        local newlinks = net.readLinks()
+        table.add(links, newlinks)
+        net.start("gotlinks")
+        net.writeLinks(newlinks)
+        net.send()
+    end)
+    net.receive("nextpage", function()
+        if #links > page*16 then
+            page = page + 1
+            net.start("page")
+            net.writeUInt(page, 16)
+            net.send()
+        end
+    end)
+    net.receive("prevpage", function()
+        if page > 1 then
+            page = page - 1
+            net.start("page")
+            net.writeUInt(page, 16)
+            net.send()
+        end
+    end)
+    net.receive("init",function(len,pl)
+        net.start("init")
+        net.writeUInt(page, 16)
+        net.writeString(search)
+        net.writeLinks(links)
+        net.send(pl)
+    end)
+
+    wire.adjustInputs({"Key"},{"normal"})
+    hook.add("input","",function(input,key)
+        if input=="Key" then
+            if key==127 then
+                search = string.sub(search, 1, #search-1)
+                net.start("search") net.writeBool(false) net.writeString(search) net.send()
+            elseif key==10 then
+                net.start("search") net.writeBool(true) net.writeString(search) net.send()
+                reset()
+            else
+                local str = string.char(key)
+                if string.find(str, "[%a _<>:%+%-]") then
+                    search = search .. str
+                    net.start("search") net.writeBool(false) net.writeString(search) net.send()
+                end
+            end
+        end
+    end)
+end
+
+
+
+
+
+
+
+
+
+
+
