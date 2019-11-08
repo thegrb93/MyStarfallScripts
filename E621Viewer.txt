@@ -30,42 +30,7 @@ function net.readLinks()
     end
 end
 
-if CLIENT then    
-    local requests = {}
-    local loading = {}
-    local function http_reset()
-        requests = {}
-        loading = {}
-        hook.remove("think","requests")
-    end
-    local function http_doneloading()
-        return next(loading)==nil and #requests==0
-    end
-    local function http_safeget(...)
-        requests[#requests+1] = {...}
-        hook.add("think","requests",function()
-            if http.canRequest() then
-                local request = table.remove(requests,1)
-                if request then
-                    loading[request] = true
-                    http.get(request[1], function(...)
-                        if loading[request] then
-                            loading[request] = nil
-                            request[2](...)
-                        end
-                    end, function(...)
-                        if loading[request] then
-                            loading[request] = nil
-                            if request[3] then request[3](...) end
-                        end
-                    end)
-                else
-                    hook.remove("think","requests")
-                end
-            end
-        end)
-    end
-    
+if CLIENT then
     local browser = class("browser")
     local mybrowser
     local image = class("image")
@@ -110,7 +75,6 @@ if CLIENT then
     end
     
     function browser:startsearch()
-        http_reset() -- All current requests get cancelled
         self.pagesloaded = 0
         self.page = 1
         self.noresults = false
@@ -123,9 +87,11 @@ if CLIENT then
     end
     
     function browser:loadPage()
-        if not http_doneloading() or self.noresults or self.page*16 < #self.links-32 then return end
+        if self.loading or self.noresults or self.page*16 < #self.links-32 then return end
         
-        http_safeget("https://e621.net/post/index.json?limit=64&tags="..self.searching.."&page="..(self.pagesloaded + 1), function(body)
+        self.loading = true
+        
+        http.get("https://e621.net/post/index.json?limit=64&tags="..self.searching.."&page="..(self.pagesloaded + 1), function(body)
             local data = json.decode(body)
             if #data > 0 then
                 self.pagesloaded = self.pagesloaded + 1
@@ -142,6 +108,11 @@ if CLIENT then
             else
                 self.noresults = true
             end
+            self.loading = false
+        end,
+        function()
+            self.loading = false
+            timer.simple(1,function() self:loadPage() end)
         end)
     end
     
