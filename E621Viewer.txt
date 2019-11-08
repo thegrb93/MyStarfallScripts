@@ -125,41 +125,22 @@ if CLIENT then
     function browser:loadPage()
         if not http_doneloading() or self.noresults or self.page*16 < #self.links-32 then return end
         
-        local links = {}
-        function sendLinks()
-            net.start("gotlinks")
-            net.writeLinks(links)
-            net.send()
-        end
-        
-        http_safeget("https://e621.net/post/index/"..(self.pagesloaded + 1).."/"..self.searching, function(body)
-            local nextlinks = {}
-            string.gsub(body, "span.-class=\"thumb\".-a href=\"(.-)\"", function(a) nextlinks[#nextlinks+1]=a end)
-            if #nextlinks==0 then self.noresults = true return end
-            self.pagesloaded = self.pagesloaded + 1
-            for _, v in ipairs(nextlinks) do
-                http_safeget("https://e621.net"..v, function(body)
-                    local _1, _2, downloadLink = string.find(body, "(%b\"\")>Download</a>")
-                    if downloadLink then
-                        downloadLink = string.sub(downloadLink, 2, -2)
-                        local ext = string.sub(downloadLink, -3)
-                        if not (ext=="swf" or ext=="ebm") then
-                            links[#links + 1] = downloadLink
-                            if #links == 16 then
-                                sendLinks()
-                                links = {}
-                            end
-                        end
+        http_safeget("https://e621.net/post/index.json?limit=64&tags="..self.searching.."&page="..(self.pagesloaded + 1), function(body)
+            local data = json.decode(body)
+            if #data > 0 then
+                self.pagesloaded = self.pagesloaded + 1
+                local links = {}
+                for k, v in pairs(data) do
+                    local ext = string.getExtensionFromFilename( v.file_url )
+                    if not (ext=="swf" or ext=="webm") then
+                        links[#links + 1] = v.file_url
                     end
-                    if http_doneloading() then
-                        sendLinks()
-                    end
-                end,
-                function()
-                    if http_doneloading() then
-                        sendLinks()
-                    end
-                end)
+                end
+                net.start("gotlinks")
+                net.writeLinks(links)
+                net.send()
+            else
+                self.noresults = true
             end
         end)
     end
@@ -283,20 +264,30 @@ if CLIENT then
     function image:loadImage(link)
         self.material = image.loadingMaterial
         if not link then return end
-        self.imagematerial:setTextureURL("$basetexture", link, function(tx,url,w,h,layout)
-            if not tx then return end
-            if w>h then
-                h = h*1024/w
-                w = 1024
-            else
-                w = w*1024/h
-                h = 1024
-            end
-            pcall(layout, 512 - w/2, 512 - h/2, w, h)
-        end,
-        function()
-            self.material = self.imagematerial
-        end)
+        if self.loading then
+            self.loadnext = link
+        else
+            self.loading = true
+            self.imagematerial:setTextureURL("$basetexture", link, function(tx,url,w,h,layout)
+                if not tx then return end
+                if w>h then
+                    h = h*1024/w
+                    w = 1024
+                else
+                    w = w*1024/h
+                    h = 1024
+                end
+                pcall(layout, 512 - w/2, 512 - h/2, w, h)
+            end,
+            function()
+                self.material = self.imagematerial
+                self.loading = false
+                if self.loadnext then
+                    self:loadImage(self.loadnext)
+                    self.loadnext = nil
+                end
+            end)
+        end
     end
     
     mybrowser = browser:new()
