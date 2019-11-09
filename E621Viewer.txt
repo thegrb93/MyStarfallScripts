@@ -91,7 +91,7 @@ if CLIENT then
         
         self.loading = true
         
-        http.get("https://e621.net/post/index.json?limit=64&tags="..self.searching.."&page="..(self.pagesloaded + 1), function(body)
+        http.get("https://e621.net/post/index.json?limit=64&tags="..http.urlEncode(self.searching).."&page="..(self.pagesloaded + 1), function(body)
             local data = json.decode(body)
             if #data > 0 then
                 self.pagesloaded = self.pagesloaded + 1
