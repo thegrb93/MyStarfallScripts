@@ -234,6 +234,8 @@ if CLIENT then
     
     function image:loadImage(link)
         self.material = image.loadingMaterial
+        self.interp = 0
+        self.zoom = false
         if not link then return end
         if self.loading then
             self.loadnext = link
