@@ -346,7 +346,7 @@ else
                 reset()
             else
                 local str = string.char(key)
-                if string.find(str, "[%a _<>:%+%-]") then
+                if string.find(str, "[%a _<>:%+%-/]") then
                     search = search .. str
                     net.start("search") net.writeBool(false) net.writeString(search) net.send()
                 end
