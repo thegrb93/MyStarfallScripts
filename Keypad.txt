@@ -24,7 +24,7 @@ if SERVER then
 			timer.simple(2, function() wire.ports.Fail = 0 end)
 		end
 		net.start("password")
-		net.writeBit(success)
+		net.writeBool(success)
 		net.send()
 	end
 else
@@ -124,7 +124,7 @@ if SERVER then
 	net.receive("password",function() mykeypad:enter(net.readString()) end)
 else
 	hook.add("render","",function() mykeypad:draw() end)
-	net.receive("password",function() mykeypad:recvConfirm(net.readBit()~=0) end)
+	net.receive("password",function() mykeypad:recvConfirm(net.readBool()) end)
 
 	render.createRenderTarget("circle")
 	hook.add("renderoffscreen","",function()
