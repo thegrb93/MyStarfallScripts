@@ -15,9 +15,9 @@ find.all(function(e)
 end)
 if not ent then error("No pillow found :(") end
 
-local orig = render.getTextureID("models/props_c17/furnituremattress001a")
-local tex1 = render.getTextureID("https://dl.dropboxusercontent.com/s/nkzh5kbjwvq3hwg/salazle1.png")
-local tex2 = render.getTextureID("https://dl.dropboxusercontent.com/s/ygb1j67a2zxa8oo/salazle2.png")
+local orig = render.createMaterial("models/props_c17/furnituremattress001a")
+local tex1 = render.createMaterial("https://dl.dropboxusercontent.com/s/nkzh5kbjwvq3hwg/salazle1.png")
+local tex2 = render.createMaterial("https://dl.dropboxusercontent.com/s/ygb1j67a2zxa8oo/salazle2.png")
 
 render.createRenderTarget("rt")
 local m = material.create("VertexLitGeneric")
