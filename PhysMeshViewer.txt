@@ -71,8 +71,8 @@ else
                         if pos[3] > maxs[3] then maxs[3] = pos[3] end
                     
                     end
-                    e:setHologramMesh(mesh.createFromTable(m))
-                    e:setHologramRenderBounds(mins, maxs)
+                    e:setMesh(mesh.createFromTable(m))
+                    e:setRenderBounds(mins, maxs)
                     
                 end
             end
