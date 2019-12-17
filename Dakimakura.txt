@@ -3,36 +3,46 @@
 --@client
 
 local ent
-local mindist = math.huge
-find.all(function(e)
-    if e:isValid() and e:getOwner()==owner() and e:getModel()=="models/props_c17/furnituremattress001a.mdl" then
-        local d = e:getPos():getDistanceSqr(chip():getPos())
-        if d < mindist then
-            ent = e
-            mindist = d
-        end
-    end
-end)
-if not ent then error("No pillow found :(") end
-
-local orig = render.createMaterial("models/props_c17/furnituremattress001a")
-local tex1 = render.createMaterial("https://dl.dropboxusercontent.com/s/nkzh5kbjwvq3hwg/salazle1.png")
-local tex2 = render.createMaterial("https://dl.dropboxusercontent.com/s/ygb1j67a2zxa8oo/salazle2.png")
+local pillows = {
+    {
+        "https://dl.dropboxusercontent.com/s/nkzh5kbjwvq3hwg/salazle1.png",
+        "https://dl.dropboxusercontent.com/s/ygb1j67a2zxa8oo/salazle2.png",
+        Color(231,231,231),
+    },
+}
+local pillow = 1
+local tex1 = render.createMaterial(pillows[pillow][1])
+local tex2 = render.createMaterial(pillows[pillow][2])
+local col = pillows[pillow][3]
 
 render.createRenderTarget("rt")
 local m = material.create("VertexLitGeneric")
 m:setTextureRenderTarget("$basetexture", "rt")
 
 local function doRender()
-    render.selectRenderTarget("rt")
+    if not ent then
+        local mindist = math.huge
+        find.all(function(e)
+            if e:isValid() and e:getOwner()==owner() and e:getModel()=="models/props_c17/furnituremattress001a.mdl" then
+                local d = e:getPos():getDistanceSqr(chip():getPos())
+                if d < mindist then
+                    ent = e
+                    mindist = d
+                end
+            end
+        end)
+        if not ent then return end
+    end
     
-    render.setTexture(orig)
-    render.drawTexturedRect(0,0,1024,1024)
+    render.selectRenderTarget("rt")
     
     local pos, ang = ent:getBonePosition(0)
     local tex = (ang:getRight():dot(player():getAimVector())<0) and tex1 or tex2
     
-    render.setTexture(tex)
+    render.setColor(col)
+    render.drawRect(0,0,1024,1024)
+
+    render.setMaterial(tex)
     local rot = Matrix() rot:setAngles(Angle(0,90,0))
     render.pushMatrix(rot)
     render.drawTexturedRectUV(0, -720, 1024, 720, 0.1369140625, 0, 0.8630859375, 1)
