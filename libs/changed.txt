@@ -5,17 +5,17 @@
 local changed =
 {
     __index = function(t,k)
-        return t.data[k] - t.lastdata[k]
+        return t.__data[k] - t.__lastdata[k]
     end,
     __newindex = function(t,k,v)
-        if t.lastdata[k] then
-            t.lastdata[k] = t.data[k]
-            t.data[k] = v
+        if t.__lastdata[k] then
+            t.__lastdata[k] = t.data[k]
+            t.__data[k] = v
         else
-            t.data[k] = v
-            t.lastdata[k] = v
+            t.__data[k] = v
+            t.__lastdata[k] = v
         end
     end,
 }
 
-return function() return setmetatable({lastdata = {}, data = {}}, changed) end
+return function() return setmetatable({__lastdata = {}, __data = {}}, changed) end
