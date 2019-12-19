@@ -1,0 +1,21 @@
+--@name ChangedLib
+--@author Sparky
+--@shared
+
+local changed =
+{
+    __index = function(t,k)
+        return t.data[k] - t.lastdata[k]
+    end,
+    __newindex = function(t,k,v)
+        if t.lastdata[k] then
+            t.lastdata[k] = t.data[k]
+            t.data[k] = v
+        else
+            t.data[k] = v
+            t.lastdata[k] = v
+        end
+    end,
+}
+
+return function() return setmetatable({lastdata = {}, data = {}}, changed) end
