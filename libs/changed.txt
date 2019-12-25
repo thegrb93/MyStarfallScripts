@@ -2,20 +2,20 @@
 --@author Sparky
 --@shared
 
-local changed =
-{
-    __index = function(t,k)
-        return t.__data[k] - t.__lastdata[k]
-    end,
-    __newindex = function(t,k,v)
-        if t.__lastdata[k] then
-            t.__lastdata[k] = t.data[k]
-            t.__data[k] = v
+local changedmeta = {
+    __newindex = function(t, k, v)
+        local c = t.__changed[k]
+        if c then
+            c.changed = v - c.val
+            c.val = v
         else
-            t.__data[k] = v
-            t.__lastdata[k] = v
+            t.__changed[k] = {val = v, changed = v}
         end
     end,
+
+    __index = function(t, k)
+        return t.__changed[k].changed
+    end
 }
 
-return function() return setmetatable({__lastdata = {}, __data = {}}, changed) end
+return function() return setmetatable({__changed = {}}, changedmeta) end
