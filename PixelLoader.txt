@@ -53,7 +53,7 @@ elseif player()==owner() then
     render.createMaterial(url, function(t,_,w_,h_) w=w_ h=h_ end, function(t,_)
         if not t then print("Failed to load url "..url) return end
         hook.add("renderoffscreen","",function()
-            render.selectRenderTarget(t:getName())
+            render.selectRenderTarget(t:getName().."$basetexture")
             render.capturePixels()
             
             local data = {}
