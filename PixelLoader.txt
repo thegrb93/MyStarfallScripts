@@ -35,15 +35,16 @@ if SERVER then
                 end
                 i = 1
                 timer.create("SpawnProps", 0, 0, function()
-                    if quotaAverage()>0.1*quotaMax() then return end
-                    if i>#props then timer.remove("SpawnProps") return end
-                    local p = props[i]
-                    local e = prop.create(p.pos, pixelAngle, pixel, true)
-                    e:setColor(p.col)
-                    e:setMaterial("debug/debugdrawflat")
-                    e:setSolid(false)
-                    e:setDrawShadow(false)
-                    i=i+1
+                    while quotaAverage()<0.1*quotaMax() and prop.canSpawn() do
+                        if i>#props then timer.remove("SpawnProps") break end
+                        local p = props[i]
+                        local e = prop.create(p.pos, pixelAngle, pixel, true)
+                        e:setColor(p.col)
+                        e:setMaterial("debug/debugdrawflat")
+                        e:setSolid(false)
+                        e:setDrawShadow(false)
+                        i=i+1
+                    end
                 end)
             end)
         end
