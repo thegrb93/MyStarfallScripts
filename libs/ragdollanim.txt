@@ -1,0 +1,969 @@
+--@name Ragdoll Animation Library
+--@author Sparky
+--@shared
+
+--[[
+To create an editor:
+
+--@name MyAnimatedRagdoll
+--@author
+--@shared
+--@include libs/ragdollanim.txt
+
+local animatedragdoll, ragdollanims, ragdollanim, ragdollanimplayer, ragdollanimcontroller, ragdollanimeditor = require("libs/ragdollanim.txt")()
+local myAnimatedRagdoll = class("MyAnimatedRagdoll", animatedragdoll)
+local EDIT = 1 == 1
+
+function myAnimatedRagdoll:initialize(ent)
+    if EDIT then
+        ragdollanimeditor:new(ent, "myAnimatedRagdoll")
+    else
+        animatedragdoll.initialize(self, ent, "myAnimatedRagdoll")
+    end
+end
+
+if SERVER then
+    local e = find.closest(find.byModel("models/myAnimatedRagdoll.mdl", function(e) return e:getOwner()==owner() end), chip():getPos())
+    if not e then error("Couldn't find a ragdoll") end
+    
+    net.receive("init", function(len, pl)
+        if pl==owner() then
+            myAnimatedRagdoll:new(e)
+        end
+    end)
+else
+    net.start("init") net.send()
+end
+
+
+]]
+
+
+local animatedragdoll = class("animatedragdoll")
+local ragdollanims = class("ragdollanims")
+local ragdollanim = class("ragdollanim")
+local ragdollanimcontroller = class("ragdollanimcontroller")
+local ragdollanimplayer = class("ragdollanimplayer")
+local ragdollbonedriver = class("ragdollbonedriver")
+local ragdollflexdriver = class("ragdollflexdriver")
+local ragdolleventdriver = class("ragdolleventdriver")
+local ragdollanimeditor = class("ragdollanimeditor")
+
+local frametime = timer.frametime()
+local gravity = physenv.getGravity().z*frametime
+local nullvector = Vector()
+local tasks = {}
+local function task(f)
+    if tasks[1]==nil then
+        hook.add("think","taskprocess",function()
+            while quotaAverage()<quotaMax()*0.5 do
+                table.remove(tasks,1)()
+                if tasks[1]==nil then
+                    hook.remove("think","taskprocess")
+                    break
+                end
+            end
+        end)
+    end
+    tasks[#tasks+1] = f
+end
+
+local function axisToMatrix(a)
+    local len = a:getLength()
+    if len<1e-8 then return Matrix() end
+    local m = Matrix()
+    m:setAxisAngle(a/len, len)
+    return m
+end
+
+local function matrixToAxis(m)
+    local axis, ang = m:getAxisAngle()
+    return axis*ang
+end
+
+local function cubicCoeff(a, da, b, db)
+    local w,x,y,z = 2*a - 2*b + da + db, -3*a + 3*b - 2*da - db, da, a
+    return {w,x,y,z,3*w,2*x}
+end
+
+local function cubicPos(spline, t3, t2, t)
+    return spline[1]*t3 + spline[2]*t2 + spline[3]*t + spline[4]
+end
+
+local function cubicVel(spline, t2, t, rate)
+    return spline[5]*(t2 * rate) + spline[6]*(t * rate) + spline[3] * rate
+end
+
+local function computeCubics(inputPos, outputVel, outputSplines, looped)
+    local null = inputPos[1]*0
+    if #inputPos < 2 then
+        outputVel[1] = null
+        outputSplines[1] = {null, null, null, inputPos[1], null, null}
+    else
+        --First point
+        if looped then
+            outputVel[1] = ((inputPos[#inputPos] - inputPos[#inputPos-1]) + (inputPos[2] - inputPos[1])) / 2
+        else
+            outputVel[1] = (inputPos[2] - inputPos[1]) / 2
+        end
+
+        for i=2, #inputPos-1 do
+            outputVel[i] = ((inputPos[i] - inputPos[i-1]) + (inputPos[i+1] - inputPos[i])) / 2
+            
+            outputSplines[i-1] = cubicCoeff(inputPos[i-1], outputVel[i-1], inputPos[i], outputVel[i])
+        end
+        
+        --End point
+        if looped then
+            outputVel[#inputPos] = outputVel[1]
+        else
+            outputVel[#inputPos] = (inputPos[#inputPos] - inputPos[#inputPos-1]) / 2
+        end
+        outputSplines[#inputPos-1] = cubicCoeff(inputPos[#inputPos-1], outputVel[#inputPos-1], inputPos[#inputPos], outputVel[#inputPos])
+    end
+end
+
+function animatedragdoll:initialize(ent, anims)
+    self.ent = ent
+    self.gravity = true
+    
+    if type(anims)=="string" then
+        self.anims = ragdollanims:new()
+        self.anims:loadFile(anims, function(ok)
+            if ok then
+                self:loadedAnimation()
+            else
+                print("Failed to load animation file: raganims/" .. anims .. ".txt")
+            end
+        end)
+    else
+        self.anims = anims
+        self:loadedAnimation()
+    end
+end
+
+function animatedragdoll:loadedAnimation()
+    self.controller = ragdollanimcontroller:new(self.ent, {}, self.anims.originheight, self.anims.neutralrotation)
+    self.controller:addLayer(self.anims:getAnimationLayer("neutral", 2, true))
+    -- self.controller.originangvel[3] = 45
+    local lastt = timer.curtime()
+    hook.add("think","animatedragdoll"..self.ent:entIndex(), function()
+        self:think()
+        local t = timer.curtime()
+        local dt = t - lastt
+        lastt = t
+        self.controller:think(dt)
+    end)
+end
+
+function animatedragdoll:think()
+    local controller = self.controller
+    local rootbone = controller.bones[controller.rootbone]
+    local originpos = controller.origin:getTranslation()
+    local curpos = rootbone:localToWorld(rootbone.masscenter)
+    local dir = controller.origin * controller.drivers.bonedrivers[controller.rootbone].pos - curpos
+    local dirlen = dir:getLengthSqr()
+    if dirlen > 1^2 then
+        originpos = originpos - dir * (1 - 1/math.sqrt(dirlen))
+        controller:setPos(originpos)
+    end
+
+    if self.gravity then
+        local height = controller:getHeight(originpos)
+        if height > controller.originheight then
+            controller.originvel[3] = controller.originvel[3] + gravity
+        else
+            controller.originvel[3] = 0
+            controller:setPos(originpos + Vector(0,0,controller.originheight - height))
+        end
+    end
+end
+
+function ragdollanims:initialize()
+    self.animations = {}
+    self.originheight = 0
+    self.neutralrotation = Angle()
+end
+
+function ragdollanims:saveFile(filename)
+    self:saveData(function(data)
+        net.start("animsavefile")
+        net.writeString(filename)
+        net.writeStream(data)
+        net.send(owner())
+    end)
+end
+
+ragdollanims.loadingind = 0
+ragdollanims.loading = {}
+function ragdollanims:loadFile(filename, donecb)
+    ragdollanims.loadingind = ragdollanims.loadingind + 1
+    ragdollanims.loading[ragdollanims.loadingind] = {self, donecb}
+    net.start("animloadfile")
+    net.writeUInt(ragdollanims.loadingind, 32)
+    net.writeString(filename)
+    net.send(owner())
+end
+
+if SERVER then
+    net.receive("animloadfile",function()
+        local ind = net.readUInt(32)
+        net.readStream(function(data)
+            local t = ragdollanims.loading[ind]
+            if data=="" then
+                t[2](false)
+            else
+                t[1]:loadData(data, t[2])
+            end
+            ragdollanims.loading[ind] = nil
+        end)
+    end)
+else
+    net.receive("animsavefile",function()
+        local name = net.readString()
+        net.readStream(function(data)
+            file.write("raganims/"..name..".txt", data)
+            print("Saved file, " .. name .. "!")
+        end)
+    end)
+
+    net.receive("animloadfile",function()
+        local ind, name = net.readUInt(32), net.readString()
+        net.start("animloadfile")
+        net.writeUInt(ind, 32)
+        local ok, filedata = pcall(file.read, "raganims/"..name..".txt")
+        if not ok then print(filedata) end
+        net.writeStream(ok and filedata or "")
+        net.send()
+    end)
+end
+
+function ragdollanims:saveData(donecb)
+    local ss = bit.stringstream()
+    ss:writeFloat(self.originheight)
+    ss:writeFloat(self.neutralrotation[1])
+    ss:writeFloat(self.neutralrotation[2])
+    ss:writeFloat(self.neutralrotation[3])
+    ss:writeInt32(table.count(self.animations))
+    for k, v in pairs(self.animations) do
+        task(function()
+            ss:writeString(k)
+            v:saveData(ss)
+        end)
+    end
+    task(function() donecb(ss:getString()) end)
+end
+
+function ragdollanims:loadData(data, donecb)
+    self.animations = {}
+    local ss = bit.stringstream(data)
+    self.originheight = ss:readFloat()
+    self.neutralrotation = Angle(ss:readFloat(), ss:readFloat(), ss:readFloat())
+    for i=1, ss:readUInt32() do
+        local anim
+        task(function()
+            local name = ss:readString()
+            anim = ragdollanim:new()
+            anim:loadData(ss)
+            self.animations[name] = anim
+        end)
+        task(function()
+            anim:compute()
+        end)
+    end
+    task(function() donecb(true) end)
+end
+
+function ragdollanims:getAnimationLayer(name, duration, looping)
+    local anim = self.animations[name]
+    if not anim then error("Invalid animation: " .. name) end
+    if looping == nil then looping = anim.looped end
+    return ragdollanimplayer:new(anim, duration, looping)
+end
+
+function ragdollanim:initialize()
+    self.bonepos = {}
+    self.boneang = {}
+    self.boneweight = {}
+    self.flexdata = {}
+    self.flexweight = {}
+    self.eventdata = {}
+    self.looped = false
+end
+
+function ragdollanim:frameCount()
+    return self.bonepos[1] and #self.bonepos[1] or 0
+end
+
+function ragdollanim:saveData(ss)
+    local nbones = #self.bonepos
+    local nflexes = #self.flexdata
+    local nframes = self:frameCount()
+    ss:writeInt32(nframes)
+    ss:writeInt32(nbones)
+    ss:writeInt32(table.count(self.eventdata))
+    ss:writeInt8(nflexes)
+    ss:writeInt8(self.looped and 1 or 0)
+    for boneindex=1, nbones do
+        local positions = self.bonepos[boneindex]
+        local angles = self.boneang[boneindex]
+        local weights = self.boneweight[boneindex]
+        for frame=1, nframes do
+            local t, a, w = positions[frame], angles[frame], weights[frame]
+            ss:writeFloat(t[1]) ss:writeFloat(t[2]) ss:writeFloat(t[3])
+            ss:writeFloat(a[1]) ss:writeFloat(a[2]) ss:writeFloat(a[3])
+            ss:writeFloat(w)
+        end
+    end
+    for flexindex=1, nflexes do
+        local flexdata = self.flexdata[flexindex]
+        local weight = self.flexweight[flexindex]
+        for frame=1, nframes do
+            ss:writeFloat(flexdata[frame])
+            ss:writeFloat(weight[frame])
+        end
+    end
+    for k, v in pairs(self.eventdata) do
+        ss:writeInt32(k)
+        ss:writeString(v)
+    end
+end
+
+function ragdollanim:loadData(ss)
+    local nframes = ss:readUInt32()
+    local nbones = ss:readUInt32()
+    local nEvents = ss:readUInt32()
+    local nflexes = ss:readUInt8()
+    self.looped = ss:readUInt8() ~= 0
+
+    for boneindex=1, nbones do
+        local pos, ang, weight = {}, {}, {}
+        
+        for frameindex=1, nframes do
+            pos[frameindex] = Vector(ss:readFloat(), ss:readFloat(), ss:readFloat())
+            ang[frameindex] = Vector(ss:readFloat(), ss:readFloat(), ss:readFloat())
+            weight[frameindex] = ss:readFloat()
+        end
+        
+        self.bonepos[boneindex] = pos
+        self.boneang[boneindex] = ang
+        self.boneweight[boneindex] = weight
+    end
+
+    for flexindex=1, nflexes do
+        local flexes, weights = {}, {}
+        for frameindex=1, nframes do
+            flexes[frameindex] = ss:readFloat()
+            weights[frameindex] = ss:readFloat()
+        end
+        self.flexdata[flexindex] = flexes
+        self.flexweight[flexindex] = weights
+    end
+
+    for i=1, nEvents do
+        local index, name = ss:readUInt32(), ss:readString()
+        self.eventdata[index] = name
+    end
+end
+
+function ragdollanim:setKeyFrame(i, pos, ang, boneweight, flexes, flexweight)
+    for k, v in ipairs(pos) do
+        if not self.bonepos[k] then self.bonepos[k] = {} end
+        self.bonepos[k][i] = v
+    end
+    for k, v in ipairs(ang) do
+        if not self.boneang[k] then self.boneang[k] = {} end
+        self.boneang[k][i] = v
+    end
+    for k, v in ipairs(boneweight) do
+        if not self.boneweight[k] then self.boneweight[k] = {} end
+        self.boneweight[k][i] = v
+    end
+    for k, v in ipairs(flexes) do
+        if not self.flexdata[k] then self.flexdata[k] = {} end
+        self.flexdata[k][i] = v
+    end
+    for k, v in ipairs(flexweight) do
+        if not self.flexweight[k] then self.flexweight[k] = {} end
+        self.flexweight[k][i] = v
+    end
+    self:compute()
+end
+
+function ragdollanim:setEvent(i, event)
+    self.eventdata[i] = event
+end
+
+function ragdollanim:compute()
+    self.bonevel = {}
+    self.bonepossplines = {}
+    for boneindex, pos in ipairs(self.bonepos) do
+        local vel, splines = {}, {}
+        
+        computeCubics(pos, vel, splines, self.looped)
+        
+        self.bonevel[boneindex] = vel
+        self.bonepossplines[boneindex] = splines
+    end
+
+    self.boneangvel = {}
+    self.boneangsplines = {}
+    for boneindex, ang in ipairs(self.boneang) do
+        local angvel, splines = {}, {}
+        
+        computeCubics(ang, angvel, splines, self.looped)
+        
+        self.boneangvel[boneindex] = vel
+        self.boneangsplines[boneindex] = splines
+    end
+
+    self.flexsplines = {}
+    for flexindex, flex in ipairs(self.flexdata) do
+        local flexvel, splines = {}, {}
+        
+        computeCubics(flex, flexvel, splines, self.looped)
+        
+        self.flexsplines[flexindex] = splines
+    end
+end
+
+function ragdollanimplayer:initialize(anim, duration, looping)
+    self.bonepos = anim.bonepossplines
+    self.boneang = anim.boneangsplines
+    self.boneweight = anim.boneweight
+    self.flexdata = anim.flexsplines
+    self.flexweight = anim.flexweight
+    self.eventdata = anim.eventdata
+
+    self.t = 0
+    self.duration = duration
+    self.looping = looping
+
+    self.startindex = 1
+    self.nindices = anim:frameCount() - 1
+
+    self.rate = 1
+end
+
+function ragdollanimplayer:apply(drivers, dt)
+    local t = self.t + dt * self.rate
+    if t>=self.duration then
+        if self.looping then
+            t = t % self.duration
+        else
+            t = self.duration - 1e-9
+        end
+    end
+    self.t = t
+
+    local timepos = self.startindex + t * self.nindices / self.duration
+    local i = math.floor(timepos)
+    local ifrac = timepos % 1
+    local ifrac2 = ifrac^2
+    local ifrac3 = ifrac^3
+    
+    for k, v in ipairs(drivers.bonedrivers) do
+        local weight = self.boneweight[k][i]
+        if weight>0 then
+            v:add(
+                cubicPos(self.bonepos[k][i], ifrac3, ifrac2, ifrac),
+                cubicVel(self.bonepos[k][i], ifrac2, ifrac, self.rate),
+                cubicPos(self.boneang[k][i], ifrac3, ifrac2, ifrac),
+                cubicVel(self.boneang[k][i], ifrac2, ifrac, self.rate),
+                weight
+            )
+        end
+    end
+
+    for k, v in ipairs(drivers.flexdrivers) do
+        local weight = self.flexweight[k][i]
+        if weight>0 then
+            v:add(cubicPos(self.flexdata[k][i], ifrac3, ifrac2, ifrac), weight)
+        end
+    end
+
+    local event = self.eventdata[i]
+    if event then
+        drivers.eventdriver:add(event)
+    end
+end
+
+function ragdollbonedriver:initialize(ent, bone, origin, originang, originvel, originangvel)
+    self.ent = ent
+    self.bone = bone
+    self.mass = bone:getMass()
+    self.origin = origin
+    self.originang = originang
+    self.originvel = originvel
+    self.originangvel = originangvel
+    
+    self.pos = Vector()
+    self.vel = Vector()
+    self.ang = Vector()
+    self.angvel = Vector()
+    self.totalweight = 0
+end
+
+function ragdollbonedriver:reset()
+    self.pos:set(nullvector)
+    self.vel:set(nullvector)
+    self.ang:set(nullvector)
+    self.angvel:set(nullvector)
+    self.totalweight = 0
+end
+
+function ragdollbonedriver:add(pos, vel, ang, angvel, weight)
+    self.pos:add(pos * weight)
+    self.vel:add(vel * weight)
+    self.ang:add(ang * weight)
+    self.angvel:add(angvel * weight)
+    self.totalweight = self.totalweight + weight
+end
+
+local tk, tc, fk, fc = 0.020, 0.002, 6, 0.5
+function ragdollbonedriver:think()
+    if self.totalweight == 0 then return end
+
+    self.pos:div(self.totalweight)
+    self.vel:div(self.totalweight)
+    self.ang:div(self.totalweight)
+    self.angvel:div(self.totalweight)
+
+    local bone = self.bone
+    
+    -- Calculate force
+    local x = self.origin*self.pos - bone:localToWorld(bone.masscenter)
+    local dx = self.originvel + self.originangvel:cross(self.originang*self.pos)*(math.pi/180) + self.originang*self.vel - bone:getVelocity()
+    local force = x*fk + dx*fc
+    bone:applyForceCenter(force*self.mass)
+
+    -- Calculate angforce
+    local axis, theta = (self.originang*axisToMatrix(self.ang)*bone:getMatrix():getInverseTR()):getAxisAngle()
+    local t = axis*math.deg(theta)
+    local dt = self.originangvel + self.originang*self.angvel - bone:localToWorldVector(bone:getAngleVelocity())
+
+    local torque = t*tk + dt*tc
+    bone:applyTorque(torque*self.mass^2)
+end
+
+function ragdollflexdriver:initialize(ent, flexindex)
+    self.ent = ent
+    self.flexindex = flexindex
+    self.currentflex = ent:getFlexWeight(flexindex)
+end
+
+function ragdollflexdriver:reset()
+    self.weightedflex = 0
+    self.totalweight = 0
+end
+
+function ragdollflexdriver:add(flex, weight)
+    self.weightedflex = self.weightedflex + flex * weight
+    self.totalweight = self.totalweight + weight
+end
+
+function ragdollflexdriver:think()
+    if self.totalweight == 0 then return end
+    local weightedflex = self.weightedflex / self.totalweight
+
+    if self.currentflex ~= weightedflex then
+        self.ent:setFlexWeight(self.flexindex, weightedflex)
+        self.currentflex = weightedflex
+    end
+end
+
+function ragdolleventdriver:initialize(funcs)
+    self.functions = funcs
+end
+
+function ragdolleventdriver:add(event)
+    local func = self.functions[event]
+    if func then
+        func()
+    end
+end
+
+function ragdollanimcontroller:initialize(ent, eventfuncs, originheight, neutralrotation)
+    self.ent = ent
+    self.layers = {}
+    self.bones = {}
+    self.drivers = {}
+    self.origin = Matrix()
+    self.originang = Matrix()
+    self.originvel = Vector()
+    self.originangvel = Vector()
+
+    local bonedrivers = {}
+    for i=1, ent:getPhysicsObjectCount() do
+        local bone = ent:getPhysicsObjectNum(i-1)
+        bone.masscenter = bone:getMassCenter()
+        bone:enableGravity(false)
+        if ent:getBoneParent(i-1)==-1 then self.rootbone = i end
+        self.bones[i] = bone
+        bonedrivers[i] = ragdollbonedriver:new(ent, bone, self.origin, self.originang, self.originvel, self.originangvel)
+    end
+    
+    hook.add("removed","entitygravity"..ent:entIndex(),function()
+        for k, v in ipairs(self.bones) do
+            v:enableGravity(true)
+        end
+    end)
+    
+    local flexdrivers = {}
+    for k, v in pairs(ent:getFlexes()) do
+        flexdrivers[v+1] = ragdollflexdriver:new(ent, v)
+    end
+    
+    self.drivers = {
+        bonedrivers = bonedrivers,
+        flexdrivers = flexdrivers,
+        eventdriver = ragdolleventdriver:new(eventfuncs)
+    }
+    
+    local rootbone = self.bones[self.rootbone]
+
+    self.neutralrotation = Matrix()
+    self.angle = Matrix()
+    if neutralrotation then
+        self.neutralrotation:setAngles(neutralrotation)
+    else
+        self.neutralrotation:setAngles(rootbone:getAngles())
+    end
+    
+    self.originang:set(self.neutralrotation)
+    self.origin:set(self.originang)
+    self.origin:setTranslation(rootbone:localToWorld(rootbone.masscenter))
+    
+    self.originheight = originheight or self:getHeight()
+end
+
+local footmins, footmaxs = Vector(-10,-10,-0.1), Vector(10,10,0.1)
+function ragdollanimcontroller:getHeight(originpos)
+    if not originpos then originpos = self.origin:getTranslation() end
+    return originpos.z - trace.traceHull(originpos, originpos + Vector(0,0,-2^16), footmins, footmaxs, self.ent).HitPos.z
+end
+
+function ragdollanimcontroller:setOriginWithHeight(originpos)
+    if not originpos then originpos = self.origin:getTranslation() end
+    self.origin:setTranslation(originpos + Vector(0,0,self.originheight - self:getHeight(originpos)))
+end
+
+function ragdollanimcontroller:setPos(pos)
+    self.origin:setTranslation(pos)
+end
+
+function ragdollanimcontroller:setAngles(angle)
+    self.angle:setAngles(angle)
+end
+
+function ragdollanimcontroller:addLayer(layer)
+    self.layers[layer] = true
+end
+
+function ragdollanimcontroller:removeLayer(layer)
+    self.layers[layer] = nil
+end
+
+function ragdollanimcontroller:clearLayers()
+    self.layers = {}
+end
+
+function ragdollanimcontroller:getKeyFrame(boneweights, flexweights)
+    local pos, ang, flexes = {}, {}, {}
+    local origininv = self.origin:getInverseTR()
+    local originanginv = self.originang:getInverseTR()
+    
+    for k, bone in ipairs(self.bones) do
+        pos[k] = origininv * bone:localToWorld(bone.masscenter)
+        ang[k] = matrixToAxis(originanginv * bone:getMatrix())
+    end
+
+    for k, v in pairs(self.ent:getFlexes()) do
+        flexes[v+1] = self.ent:getFlexWeight(v)
+    end
+
+    return pos, ang, boneweights, flexes, flexweights
+end
+
+function ragdollanimcontroller:start()
+    hook.add("think","ragdollcontroller"..self.ent:entIndex(), function() self:think(timer.curtime()) end)
+end
+
+function ragdollanimcontroller:stop()
+    hook.remove("think","ragdollcontroller"..self.ent:entIndex())
+end
+
+function ragdollanimcontroller:think(dt)
+    local originpos = self.origin:getTranslation()
+    if not self.originvel:isZero() then
+        originpos = originpos + self.originvel * dt
+    end
+    if not self.originangvel:isZero() then
+        local angrot = axisToMatrix(self.originangvel * (math.pi/180*dt))
+        self.angle = self.angle * angrot
+    end
+    self.originang:set(self.angle * self.neutralrotation)
+    self.origin:set(self.originang)
+    self.origin:setTranslation(originpos)
+
+    for k, v in ipairs(self.drivers.bonedrivers) do
+        v:reset()
+    end
+    for k, v in ipairs(self.drivers.flexdrivers) do
+        v:reset()
+    end
+
+    for layer in next, self.layers do
+        layer:apply(self.drivers, dt)
+    end
+    
+    for k, v in ipairs(self.drivers.bonedrivers) do
+        v:think()
+    end
+    for k, v in ipairs(self.drivers.flexdrivers) do
+        v:think()
+    end
+end
+
+function ragdollanimeditor:initialize(ent, filename)
+    self.filename = filename
+    self.anims = ragdollanims:new()
+    self.frameindex = 1
+    self.playing = false
+    self.active = true
+    
+    if ent then self:setEnt(ent) end
+
+    hook.add("playersay",tostring(self),function(pl,txt)
+        if pl~=owner() then return end
+        local s = string.gmatch(txt,"%S+")
+        local cmd = s()
+        if cmd and self.commands[cmd] then
+            local t, arg = {}, s() while arg do t[#t+1] = arg arg = s() end
+            self.commands[cmd](self, unpack(t))
+            return ""
+        end
+    end)
+end
+
+function ragdollanimeditor:setEnt(ent)
+    self.ent = ent
+    self.controller = ragdollanimcontroller:new(ent)
+    self.boneweights = {}
+    self.flexweights = {}
+    
+    for k, v in ipairs(self.controller.drivers.bonedrivers) do
+        self.boneweights[k] = 1
+    end
+    
+    for k, v in ipairs(self.controller.drivers.flexdrivers) do
+        self.flexweights[k] = 0
+    end
+    
+    ragdollanimeditor.commands.select(self, "neutral")
+    
+    local lastt = timer.curtime()
+    hook.add("think","ragdolleditorcontroller", function()
+        local t = timer.curtime()
+        local dt = t - lastt
+        lastt = t
+        if self.active then
+            self.controller:think(dt)
+        end
+    end)
+end
+
+function ragdollanimeditor:seekFrame(frame)
+    self.frameindex = frame
+    self.animplayer = ragdollanimplayer:new(self.anim, math.max(self.anim:frameCount()-1,1), true)
+    self.animplayer.t = math.max(frame - 1.001, 0)
+    self.animplayer.rate = 0
+    self.controller:clearLayers()
+    self.controller:addLayer(self.animplayer)
+end
+
+function ragdollanimeditor:setFrame(frame)
+    self.anim:setKeyFrame(frame, self.controller:getKeyFrame(self.boneweights, self.flexweights))
+end
+
+ragdollanimeditor.commands = {}
+function ragdollanimeditor.commands.select(self, name)
+    if not name then print("You need to specify the name of the animation!") return end
+    if not self.controller then print("You need to select an entity!") return end
+    self.name = name
+    self.anim = self.anims.animations[name]
+    if self.anim then
+        print("Selected animation " .. name)
+    else
+        print("Created animation " .. name)
+        self.anim = ragdollanim:new(name)
+        self.anims.animations[name] = self.anim
+        self:setFrame(1)
+    end
+    self:seekFrame(1)
+end
+
+function ragdollanimeditor.commands.rm(self, name)
+    if not name then print("You need to specify the name of the animation!") return end
+    if self.anims.animations[name] then
+        self.anims.animations[name] = nil
+        print("Removed " .. name)
+    else
+        print("That animation doesn't exist!")
+    end
+end
+
+function ragdollanimeditor.commands.rename(self, name)
+    if not self.name then print("No animation is currently selected!") return end
+    if not name then print("You need to specify the name of the animation!") return end
+    local anim = self.anims.animations[self.name]
+    self.anims.animations[self.name] = nil
+    self.anims.animations[name] = anim
+    print("Renamed " .. self.name .. " to " .. name)
+    self.name = name
+end
+
+function ragdollanimeditor.commands.active(self, on)
+    self.active = not on or on~="0"
+end
+
+function ragdollanimeditor.commands.play(self, duration)
+    duration = tonumber(duration)
+    if not duration then print("Specify the animation duration!") return end
+    self.animplayer.rate = self.anim:frameCount()/duration
+    print("Now playing")
+end
+
+function ragdollanimeditor.commands.stop(self)
+    self:seekFrame(self.frameindex)
+    print("Stopped")
+end
+
+function ragdollanimeditor.commands.event(self, name)
+    if not self.anim then print("No animation selected") return end
+    if not name then print("Specify event name") return end
+    self.anim:setEvent(self.frameindex, name)
+end
+
+function ragdollanimeditor.commands.save(self, name)
+    if name then self.filename = name end
+    if not self.filename then print("You need to specify the file name to save!") return end
+    self.anims.originheight = self.controller.originheight
+    self.anims.neutralrotation:set(self.controller.neutralrotation:getAngles())
+    self.anims:saveFile(self.filename)
+    print("Saving " .. self.filename .. "...")
+end
+
+function ragdollanimeditor.commands.load(self, name)
+    name = name or self.filename
+    if not name then print("You need to specify the file to load!") return end
+    print("Loading " .. name .. "...")
+    self.filename = name
+    self.anims:loadFile(name, function(ok)
+        if ok then
+            print("Finished loading")
+            self.controller.originheight = self.anims.originheight
+            self.controller.neutralrotation:setAngles(self.anims.neutralrotation)
+            self.controller:setOriginWithHeight()
+            ragdollanimeditor.commands.select(self, "neutral")
+        else
+            print("Failed to load raganims/"..name..".txt")
+        end
+    end)
+end
+
+function ragdollanimeditor.commands.set(self)
+    if not self.anim then print("No animation selected") return end
+    self:setFrame(self.frameindex)
+    self:seekFrame(self.frameindex)
+    print("Set frame " .. self.frameindex)
+end
+
+function ragdollanimeditor.commands.boneweight(self, bone, weight)
+    if not self.anim then print("No animation selected") return end
+    if not weight then
+        weight = tonumber(bone)
+        bone = owner():getEyeTrace().PhysicsBone+1
+        if not bone then print("Invalid bone: " .. tostring(bone)) return end
+    else
+        if bone~="all" then
+            bone = tonumber(bone)
+            if not bone or self.boneweights[bone] == nil then print("Invalid bone: " .. tostring(bone)) return end
+        end
+        weight = tonumber(weight)
+    end
+    if not weight then print("Invalid weight: " .. tostring(weight)) return end
+    if bone == "all" then
+        for k, v in ipairs(self.boneweights) do
+            self.boneweights[k] = weight
+        end
+    else
+        self.boneweights[bone] = weight
+    end
+    print("Set bone (" .. bone .. ") to weight: " .. weight)
+end
+
+function ragdollanimeditor.commands.flexweight(self, flex, weight)
+    if not self.anim then print("No animation selected") return end
+    if flex~="all" then
+        local flexes = self.ent:getFlexes()
+        flex = tonumber(flex)
+        if not flex then
+            for k, v in pairs(flexes) do
+                if k==flex then flex = v+1 break end
+            end
+        end
+        if not flex or self.flexweights[flex] == nil then print("Invalid flex: " .. tostring(flex) .. ". Valid flexes: ") printTable(flexes) return end
+    end
+    weight = tonumber(weight)
+    if not weight then print("Invalid weight: " .. tostring(weight)) return end
+    if flex == "all" then
+        for k, v in ipairs(self.flexweights) do
+            self.flexweights[k] = weight
+        end
+    else
+        self.flexweights[flex] = weight
+    end
+    print("Set flex (" .. flex .. ") to weight: " .. weight)
+end
+
+function ragdollanimeditor.commands.set(self)
+    if not self.anim then print("No animation selected") return end
+    self:setFrame(self.frameindex)
+    self:seekFrame(self.frameindex)
+    print("Set frame " .. self.frameindex)
+end
+
+function ragdollanimeditor.commands.loop(self, val)
+    if not self.anim then print("No animation selected") return end
+    self.anim.looped = val ~= "0"
+    self.anim:compute()
+    self:seekFrame(self.frameindex)
+    print("Setting looped to " .. tostring(self.anim.looped))
+end
+
+function ragdollanimeditor.commands.seek(self, i)
+    i = tonumber(i)
+    if not i or i<1 or i>self.anim:frameCount() then print("Invalid index. Should be 1 to " .. self.anim:frameCount() .. ".") return end
+    self.frameindex = i
+    self:seekFrame(self.frameindex)
+    print("Moved to frame " .. self.frameindex)
+end
+
+function ragdollanimeditor.commands.next(self)
+    if not self.anim then print("No animation selected") return end
+    self.frameindex = self.frameindex + 1
+    if self.frameindex > self.anim:frameCount() then
+        self:setFrame(self.frameindex)
+    end
+    self:seekFrame(self.frameindex)
+    print("Moved to frame " .. self.frameindex)
+end
+
+function ragdollanimeditor.commands.prev(self)
+    if not self.anim then print("No animation selected") return end
+    self:seekFrame(math.max(self.frameindex - 1, 1))
+    print("Moved to frame " .. self.frameindex)
+end
+
+return function() return animatedragdoll, ragdollanims, ragdollanim, ragdollanimplayer, ragdollanimcontroller, ragdollanimeditor end
