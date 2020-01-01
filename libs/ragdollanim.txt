@@ -143,9 +143,10 @@ function animatedragdoll:initialize(ent, anims)
 end
 
 function animatedragdoll:loadedAnimation()
+    self.neutral = self.anims:getAnimationLayer("neutral", 1, true)
     self.controller = ragdollanimcontroller:new(self.ent, {}, self.anims.originheight, self.anims.neutralrotation)
-    self.controller:addLayer(self.anims:getAnimationLayer("neutral", 2, true))
-    -- self.controller.originangvel[3] = 45
+    self.controller:addLayer(self.neutral)
+    self.controller.originangvel[3] = 45
     local lastt = timer.curtime()
     hook.add("think","animatedragdoll"..self.ent:entIndex(), function()
         self:think()
@@ -539,7 +540,7 @@ function ragdollbonedriver:add(pos, vel, ang, angvel, weight)
     self.totalweight = self.totalweight + weight
 end
 
-local tk, tc, fk, fc = 0.020, 0.002, 6, 0.5
+local tk, tc, fk, fc = 0.030, 0.002, 6, 0.5
 function ragdollbonedriver:think()
     if self.totalweight == 0 then return end
 
