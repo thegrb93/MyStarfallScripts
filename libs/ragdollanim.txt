@@ -390,6 +390,25 @@ function ragdollanim:setKeyFrame(i, pos, ang, boneweight, flexes, flexweight)
     self:compute()
 end
 
+function ragdollanim:removeKeyFrame(i)
+    for k, v in ipairs(self.bonepos) do
+        table.remove(v, i)
+    end
+    for k, v in ipairs(self.boneang) do
+        table.remove(v, i)
+    end
+    for k, v in ipairs(self.boneweight) do
+        table.remove(v, i)
+    end
+    for k, v in ipairs(self.flexdata) do
+        table.remove(v, i)
+    end
+    for k, v in ipairs(self.flexweight) do
+        table.remove(v, i)
+    end
+    self:compute()
+end
+
 function ragdollanim:setEvent(i, event)
     self.eventdata[i] = event
 end
@@ -803,6 +822,12 @@ function ragdollanimeditor.commands.select(self, name)
     self:seekFrame(1)
 end
 
+function ragdollanimeditor.commands.list(self)
+    for k, v in pairs(self.anims.animations) do
+        print(k)
+    end
+end
+
 function ragdollanimeditor.commands.rm(self, name)
     if not name then print("You need to specify the name of the animation!") return end
     if self.anims.animations[name] then
@@ -872,13 +897,6 @@ function ragdollanimeditor.commands.load(self, name)
     end)
 end
 
-function ragdollanimeditor.commands.set(self)
-    if not self.anim then print("No animation selected") return end
-    self:setFrame(self.frameindex)
-    self:seekFrame(self.frameindex)
-    print("Set frame " .. self.frameindex)
-end
-
 function ragdollanimeditor.commands.boneweight(self, bone, weight)
     if not self.anim then print("No animation selected") return end
     if not weight then
@@ -932,6 +950,16 @@ function ragdollanimeditor.commands.set(self)
     self:setFrame(self.frameindex)
     self:seekFrame(self.frameindex)
     print("Set frame " .. self.frameindex)
+end
+
+function ragdollanimeditor.commands.unset(self)
+    if not self.anim then print("No animation selected") return end
+    if self.anim:frameCount()==1 then print("No frames left to remove") return end
+    self.anim:removeKeyFrame(self.frameindex)
+    print("Removed frame " .. self.frameindex)
+    if self.frameindex > self.anim:frameCount() then
+        self:seekFrame(self.anim:frameCount())
+    end
 end
 
 function ragdollanimeditor.commands.loop(self, val)
