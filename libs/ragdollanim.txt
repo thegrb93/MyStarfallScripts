@@ -597,18 +597,24 @@ function ragdollbonedriver:think()
     self.ang:div(self.totalweight)
     self.angvel:div(self.totalweight)
 
+    self:linearForce(self.origin*self.pos, self.originvel + self.originangvel:cross(self.originang*self.pos)*(math.pi/180) + self.originang*self.vel)
+    self:angularForce(self.originang*axisToMatrix(self.ang), self.originangvel + self.originang*self.angvel)
+end
+
+function ragdollbonedriver:linearForce(pos, vel)
     local bone = self.bone
-    
-    -- Calculate force
-    local x = self.origin*self.pos - bone:localToWorld(bone.masscenter)
-    local dx = self.originvel + self.originangvel:cross(self.originang*self.pos)*(math.pi/180) + self.originang*self.vel - bone:getVelocity()
+    local x = pos - bone:localToWorld(bone.masscenter)
+    local dx = vel - bone:getVelocity()
+
     local force = x*fk + dx*fc
     bone:applyForceCenter(force*self.mass)
+end
 
-    -- Calculate angforce
-    local axis, theta = (self.originang*axisToMatrix(self.ang)*bone:getMatrix():getInverseTR()):getAxisAngle()
+function ragdollbonedriver:angularForce(pos, vel)
+    local bone = self.bone
+    local axis, theta = (pos*bone:getMatrix():getInverseTR()):getAxisAngle()
     local t = axis*math.deg(theta)
-    local dt = self.originangvel + self.originang*self.angvel - bone:localToWorldVector(bone:getAngleVelocity())
+    local dt = vel - bone:localToWorldVector(bone:getAngleVelocity())
 
     local torque = t*tk + dt*tc
     bone:applyTorque(torque*self.mass^2)
