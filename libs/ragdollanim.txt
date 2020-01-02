@@ -146,7 +146,6 @@ function animatedragdoll:loadedAnimation()
     self.neutral = self.anims:getAnimationLayer("neutral", 1, true)
     self.controller = ragdollanimcontroller:new(self.ent, {}, self.anims.originheight, self.anims.neutralrotation)
     self.controller:addLayer(self.neutral)
-    self.controller.originangvel[3] = 45
     local lastt = timer.curtime()
     hook.add("think","animatedragdoll"..self.ent:entIndex(), function()
         self:think()
@@ -155,13 +154,13 @@ function animatedragdoll:loadedAnimation()
         lastt = t
         self.controller:think(dt)
     end)
+    self.rootbone = self.controller.bones[self.controller.rootbone]
 end
 
 function animatedragdoll:think()
     local controller = self.controller
-    local rootbone = controller.bones[controller.rootbone]
     local originpos = controller.origin:getTranslation()
-    local curpos = rootbone:localToWorld(rootbone.masscenter)
+    local curpos = self.rootbone:localToWorld(self.rootbone.masscenter)
     local dir = controller.origin * controller.drivers.bonedrivers[controller.rootbone].pos - curpos
     local dirlen = dir:getLengthSqr()
     if dirlen > 1^2 then
@@ -463,6 +462,17 @@ function ragdollanimplayer:initialize(anim, duration, looping)
     self.nindices = anim:frameCount() - 1
 
     self.rate = 1
+    self.weight = 1
+end
+
+function ragdollanimplayer:fadeOut(rate)
+    self.fadeout = rate
+    self.fadein = nil
+end
+
+function ragdollanimplayer:fadeIn(rate)
+    self.fadeout = nil
+    self.fadein = rate
 end
 
 function ragdollanimplayer:apply(drivers, dt)
@@ -475,6 +485,19 @@ function ragdollanimplayer:apply(drivers, dt)
         end
     end
     self.t = t
+    if self.fadein then
+        self.weight = self.weight + dt * self.fadein
+        if self.weight >= 1 then
+            self.weight = 1
+            self.fadein = nil
+        end
+    elseif self.fadeout then
+        self.weight = self.weight - dt * self.fadeout
+        if self.weight <= 0 then
+            self.weight = 0
+            self.fadeout = nil
+        end
+    end
 
     local timepos = self.startindex + t * self.nindices / self.duration
     local i = math.floor(timepos)
@@ -483,7 +506,7 @@ function ragdollanimplayer:apply(drivers, dt)
     local ifrac3 = ifrac^3
     
     for k, v in ipairs(drivers.bonedrivers) do
-        local weight = self.boneweight[k][i]
+        local weight = self.boneweight[k][i]*self.weight
         if weight>0 then
             v:add(
                 cubicPos(self.bonepos[k][i], ifrac3, ifrac2, ifrac),
@@ -496,14 +519,14 @@ function ragdollanimplayer:apply(drivers, dt)
     end
 
     for k, v in ipairs(drivers.flexdrivers) do
-        local weight = self.flexweight[k][i]
+        local weight = self.flexweight[k][i]*self.weight
         if weight>0 then
             v:add(cubicPos(self.flexdata[k][i], ifrac3, ifrac2, ifrac), weight)
         end
     end
 
     local event = self.eventdata[i]
-    if event then
+    if event and self.weight>0 then
         drivers.eventdriver:add(event)
     end
 end
