@@ -449,9 +449,9 @@ end
 function ragdollanimplayer:initialize(anim, duration, looping)
     self.bonepos = anim.bonepossplines
     self.boneang = anim.boneangsplines
-    self.boneweight = anim.boneweight
+    self.boneweight = setmetatable({}, {__index = anim.boneweight})
     self.flexdata = anim.flexsplines
-    self.flexweight = anim.flexweight
+    self.flexweight = setmetatable({}, {__index = anim.flexweight})
     self.eventdata = anim.eventdata
 
     self.t = 0
@@ -473,6 +473,30 @@ end
 function ragdollanimplayer:fadeIn(rate)
     self.fadeout = nil
     self.fadein = rate
+end
+
+function ragdollanimplayer:disableBone(bone)
+    local weights = {}
+    for i=1, #self.bonepos[bone] do
+        weights[i] = 0
+    end
+    self.boneweight[bone] = weights
+end
+
+function ragdollanimplayer:resetBone(bone)
+    self.boneweight[bone] = nil
+end
+
+function ragdollanimplayer:disableFlex(flex)
+    local weights = {}
+    for i=1, #self.flexdata[flex] do
+        weights[i] = 0
+    end
+    self.flexweight[flex] = weights
+end
+
+function ragdollanimplayer:resetFlex(flex)
+    self.flexweight[flex] = nil
 end
 
 function ragdollanimplayer:apply(drivers, dt)
@@ -545,6 +569,7 @@ function ragdollbonedriver:initialize(ent, bone, origin, originang, originvel, o
     self.ang = Vector()
     self.angvel = Vector()
     self.totalweight = 0
+    self.disabled = false
 end
 
 function ragdollbonedriver:reset()
@@ -565,7 +590,7 @@ end
 
 local tk, tc, fk, fc = 0.030, 0.002, 6, 0.5
 function ragdollbonedriver:think()
-    if self.totalweight == 0 then return end
+    if self.disabled or self.totalweight == 0 then return end
 
     self.pos:div(self.totalweight)
     self.vel:div(self.totalweight)
@@ -593,6 +618,7 @@ function ragdollflexdriver:initialize(ent, flexindex)
     self.ent = ent
     self.flexindex = flexindex
     self.currentflex = ent:getFlexWeight(flexindex)
+    self.disabled = false
 end
 
 function ragdollflexdriver:reset()
@@ -606,7 +632,7 @@ function ragdollflexdriver:add(flex, weight)
 end
 
 function ragdollflexdriver:think()
-    if self.totalweight == 0 then return end
+    if self.disabled or self.totalweight == 0 then return end
     local weightedflex = self.weightedflex / self.totalweight
 
     if self.currentflex ~= weightedflex then
@@ -617,11 +643,12 @@ end
 
 function ragdolleventdriver:initialize(funcs)
     self.functions = funcs
+    self.disabled = false
 end
 
 function ragdolleventdriver:add(event)
     local func = self.functions[event]
-    if func then
+    if func and not self.disabled then
         func()
     end
 end
@@ -766,6 +793,30 @@ function ragdollanimcontroller:think(dt)
     for k, v in ipairs(self.drivers.flexdrivers) do
         v:think()
     end
+end
+
+function ragdollanimcontroller:enableBone(bone)
+    self.drivers.bonedrivers[bone].disabled = false
+end
+
+function ragdollanimcontroller:disableBone(bone)
+    self.drivers.bonedrivers[bone].disabled = true
+end
+
+function ragdollanimcontroller:enableFlex(flex)
+    self.drivers.flexdrivers[flex].disabled = false
+end
+
+function ragdollanimcontroller:disableFlex(flex)
+    self.drivers.flexdrivers[flex].disabled = true
+end
+
+function ragdollanimcontroller:enableEvent(event)
+    self.drivers.eventdriver.disabled = false
+end
+
+function ragdollanimcontroller:disableEvent(event)
+    self.drivers.eventdriver.disabled = true
 end
 
 function ragdollanimeditor:initialize(ent, filename)
