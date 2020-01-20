@@ -713,7 +713,7 @@ function ragdollanimcontroller:initialize(ent, eventfuncs, originheight, neutral
     self.originheight = originheight or self:getHeight()
 end
 
-local footmins, footmaxs = Vector(-10,-10,-0.1), Vector(10,10,0.1)
+local footmins, footmaxs = Vector(-5,-5,-0.01), Vector(5,5,0.01)
 function ragdollanimcontroller:getHeight(originpos)
     if not originpos then originpos = self.origin:getTranslation() end
     return originpos.z - trace.traceHull(originpos, originpos + Vector(0,0,-2^16), footmins, footmaxs, self.ent).HitPos.z
