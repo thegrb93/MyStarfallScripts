@@ -198,7 +198,7 @@ local function init()
     ents.LegBR = leg(ents.Base, CatLegBR[1].self.Ent, CatLegBR[1].children[1].self.Ent, 1, -40)
     ents.LegBL = leg(ents.Base, CatLegBL[1].self.Ent, CatLegBL[1].children[1].self.Ent, math.pi+1, -40)
 
-    basepd = criticalpd.New(ents.Base, 50, 80)
+    basepd = criticalpd:new(ents.Base, 50, 80)
     hook.add("think","simulate",simulate)
     
     --[[local tail, tailtip = CatTail[1].self.Ent, CatTail[1].children[1].self.Ent
@@ -240,20 +240,23 @@ hook.add("playerleavevehicle","",function(ply,veh)
     end
 end)
 
-function createPac(parent, children)
-    for i, v in ipairs(children) do
-        local self = v.self
-        local h = holograms.create(parent:localToWorld(self.Position), parent:localToWorldAngles(self.Angles), self.Model, self.Scale)
-        h:setColor(Color(self.Color[1]*255, self.Color[2]*255, self.Color[3]*255, 255))
-        h:setParent(parent)
-        self.Ent = h
-        if self.Clips then
-            for i, clip in ipairs(self.Clips) do
-                h:setClip(i, true, clip.Position, clip.Angles:getForward(), true)
+function createPac(base, parts)
+    local function createChildren(parent, children)
+        for i, v in ipairs(children) do
+            local self = v.self
+            local h = holograms.create(parent:localToWorld(self.Position), parent:localToWorldAngles(self.Angles), self.Model, self.Scale)
+            h:setColor(Color(self.Color[1]*255, self.Color[2]*255, self.Color[3]*255, 255))
+            h:setParent(parent)
+            self.Ent = h
+            if self.Clips then
+                for i, clip in ipairs(self.Clips) do
+                    h:setClip(i, true, clip.Position, clip.Angles:getForward(), h)
+                end
             end
+            createChildren(h, v.children)
         end
-        createPac(h, v.children)
     end
+    createChildren(base, parts)
 end
 
 CatHead = {
