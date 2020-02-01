@@ -1,0 +1,141 @@
+--@name Piss
+--@author Sparky
+--@server
+
+--- Press E to piss
+
+local peter = class("peter")
+local pp = class("pp")
+
+local tasks = {}
+local function task(f)
+    if tasks[1]==nil then
+        hook.add("think","taskprocess",function()
+            while quotaAverage()<quotaMax()*0.5 and holograms.canSpawn() do
+                table.remove(tasks,1)()
+                if tasks[1]==nil then
+                    hook.remove("think","taskprocess")
+                    break
+                end
+            end
+        end)
+    end
+    tasks[#tasks+1] = f
+end
+
+local function peterPos()
+    local bonepos, boneang = owner():getBonePosition(0)
+    return bonepos+boneang:getUp()*5
+end    
+
+function pp:initialize(peter)
+    self.peter = peter
+    task(function()
+        self.ppholo = holograms.create(peterPos(),Angle(),"models/holograms/rcylinder_thick.mdl")
+        self.ppholo:setParent(owner())
+        self.ppholo:setNoDraw(true)
+        self.ppholo:suppressEngineLighting(true)
+        self.ppholo:setScale(Vector(0.1,0.1,0.5))
+        self.ppholo:setColor(Color(200,200,40,100))
+    end)
+    task(function()
+        self.puddleholo = holograms.create(peterPos(),Angle(),"models/holograms/hq_cylinder.mdl")
+        self.puddleholo:setParent(self.ppholo)
+        self.puddleholo:setNoDraw(true)
+        self.puddleholo:suppressEngineLighting(true)
+        self.puddleholo:setScale(Vector(0.2, 0.2, 0.1))
+        self.puddleholo:setColor(Color(130,130,40,100))
+        self.peter.availablepp[self] = true
+    end)
+end
+
+function pp:start(pos, vel)
+    self.ppholo:setPos(pos)
+    self.ppholo:setVelocity(vel)
+    self.vel = vel
+    self.think = self.ppthink
+    self:think()
+    self.ppholo:setParent()
+    self.ppholo:setNoDraw(false)
+    self.peter.availablepp[self] = nil
+    self.peter.usedpp[self] = true
+end
+
+function pp:stop()
+    self.ppholo:setPos(peterPos())
+    self.ppholo:setParent(owner())
+    self.ppholo:setScale(Vector(0.1,0.1,0.5))
+    self.puddleholo:setNoDraw(true)
+    self.puddleholo:setScale(Vector(0.2, 0.2, 0.1))
+    self.peter.availablepp[self] = true
+    self.peter.usedpp[self] = nil
+end
+
+local dt = timer.frametime()
+function pp:ppthink()
+    self.vel = self.vel + physenv.getGravity()*dt
+    local vell = self.vel:getLength()
+    self.ppholo:setVel(self.vel)
+
+    local pos = self.ppholo:getPos()
+    local up = self.vel/vell
+    local forward, right = up:getBasis()
+    local m = Matrix()
+    m:setForward(forward) m:setRight(-right) m:setUp(up)
+    self.ppholo:setAngles(m:getAngles())
+    self.ppholo:setScale(Vector(0.1,0.1,0.5+vell/100))
+    
+    local tr = trace.trace(pos, pos+up*5, owner())
+    if tr.Hit then
+        if tr.HitNormal[3]>0.9 then
+            self.ppholo:setNoDraw(true)
+            self.ppholo:setVel(Vector())
+            self.puddleholo:setVel(Vector())
+            self.puddleholo:setNoDraw(false)
+            self.puddleholo:setAngles(Angle())
+            self.think = self.puddlethink
+            self.hittime = timer.curtime()
+        else
+            self.vel = self.vel - tr.HitNormal*(self.vel:dot(tr.HitNormal)*2)
+        end
+    end
+end
+
+function pp:puddlethink()
+    local t = (timer.curtime() - self.hittime)/2
+    if t<1 then
+        self.puddleholo:setScale(Vector(0.2+t*5, 0.2+t*5, 0.1))
+    elseif t>5 then
+        self:stop()
+    end
+end
+
+function peter:initialize()
+    self.availablepp = {}
+    self.usedpp = {}
+    for i=1, 100 do
+        pp:new(self)
+    end
+    self.pcount = 0
+end
+
+function peter:think()
+    if owner():keyDown(IN_KEY.USE) then
+        if self.pcount==0 then
+            local p = next(self.availablepp)
+            if p then
+                p:start(peterPos(), owner():getAimVector()*400)
+            end
+        end
+        self.pcount = (self.pcount+1)%3
+    end
+
+    for p in next, self.usedpp do
+        p:think()
+    end
+end
+
+local mypeter = peter:new()
+hook.add("think","",function() mypeter:think() end)
+
+
