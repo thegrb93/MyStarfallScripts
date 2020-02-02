@@ -62,9 +62,12 @@ function pp:start(pos, vel)
 end
 
 function pp:stop()
+    self.ppholo:setNoDraw(true)
+    self.ppholo:setVel(Vector())
     self.ppholo:setPos(peterPos())
     self.ppholo:setParent(owner())
     self.ppholo:setScale(Vector(0.1,0.1,0.5))
+    self.puddleholo:setPos(self.ppholo:getPos())
     self.puddleholo:setNoDraw(true)
     self.puddleholo:setScale(Vector(0.2, 0.2, 0.1))
     self.peter.availablepp[self] = true
@@ -75,6 +78,7 @@ local dt = timer.frametime()
 function pp:ppthink()
     self.vel = self.vel + physenv.getGravity()*dt
     local vell = self.vel:getLength()
+    if vell>1000 then self:stop() return end
     self.ppholo:setVel(self.vel)
 
     local pos = self.ppholo:getPos()
@@ -85,11 +89,12 @@ function pp:ppthink()
     self.ppholo:setAngles(m:getAngles())
     self.ppholo:setScale(Vector(0.1,0.1,0.5+vell/100))
     
-    local tr = trace.trace(pos, pos+up*5, owner())
+    local tr = trace.trace(pos, pos+up*10, owner())
     if tr.Hit then
         if tr.HitNormal[3]>0.9 then
             self.ppholo:setNoDraw(true)
             self.ppholo:setVel(Vector())
+            self.puddleholo:setPos(tr.HitPos)
             self.puddleholo:setVel(Vector())
             self.puddleholo:setNoDraw(false)
             self.puddleholo:setAngles(Angle())
@@ -130,7 +135,9 @@ function peter:think()
         self.pcount = (self.pcount+1)%3
     end
 
+    local i = 0
     for p in next, self.usedpp do
+        i = i + 1
         p:think()
     end
 end
