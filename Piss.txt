@@ -74,12 +74,9 @@ function pp:think()
     
     local tr = trace.trace(pos, pos+up*10, owner())
     if tr.Hit then
-        if tr.HitNormal[3]>0.9 then
-            trace.decal("BeerSplash", pos, pos+up*10)
-            self:stop()
-        else
-            self.vel = self.vel - tr.HitNormal*(self.vel:dot(tr.HitNormal)*2)
-        end
+        trace.decal("BeerSplash", pos, pos+up*10)
+        --trace.decal("PaintSplatPink", pos, pos+up*10)
+        self:stop()
     end
 end
 
