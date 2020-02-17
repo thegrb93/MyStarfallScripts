@@ -2,7 +2,17 @@
 --@author Sparky
 --@server
 
---- Press E to piss
+--- Press Shift+E to piss
+
+local cum = false
+local decal, color
+if cum then
+    color = Color(200,200,200,100)
+    decal = "PaintSplatPink"
+else
+    color = Color(200,200,40,100)
+    decal = "BeerSplash"
+end
 
 local peter = class("peter")
 local pp = class("pp")
@@ -31,8 +41,7 @@ function pp:initialize(peter)
         self.ppholo:setNoDraw(true)
         self.ppholo:suppressEngineLighting(true)
         self.ppholo:setScale(Vector(0.1,0.1,0.5))
-        self.ppholo:setColor(Color(200,200,40,100))
-        --self.ppholo:setColor(Color(200,200,200,100))
+        self.ppholo:setColor(color)
         self.peter.availablepp[self] = true
     end)
 end
@@ -61,7 +70,7 @@ local dt = timer.frametime()
 function pp:think()
     self.vel = self.vel + physenv.getGravity()*dt
     local vell = self.vel:getLength()
-    if vell>1000 then self:stop() return end
+    if vell>5000 then self:stop() return end
     self.ppholo:setVel(self.vel)
 
     local pos = self.ppholo:getPos()
@@ -74,8 +83,7 @@ function pp:think()
     
     local tr = trace.trace(pos, pos+up*10, owner())
     if tr.Hit then
-        trace.decal("BeerSplash", pos, pos+up*10)
-        --trace.decal("PaintSplatPink", pos, pos+up*10)
+        trace.decal(decal, pos, pos+up*10)
         self:stop()
     end
 end
@@ -95,7 +103,7 @@ function peter:getPos()
 end
 
 function peter:think()
-    if owner():keyDown(IN_KEY.USE) then
+    if owner():keyDown(IN_KEY.USE) and owner():keyDown(IN_KEY.SPEED) then
         if self.pcount==0 then
             local p = next(self.availablepp)
             if p then
