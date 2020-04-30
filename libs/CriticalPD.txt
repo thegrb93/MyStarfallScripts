@@ -7,16 +7,17 @@
 
 local EntityCriticalPD = class("EntityCriticalPD")
 
-function EntityCriticalPD:initialize(ent, translationGain, rotationGain)
-	local self = setmetatable({}, EntityCriticalPDMeta)
-
-	self.ent = ent
-	self.phys = ent:getPhysicsObject()
+function EntityCriticalPD:initialize(phys, translationGain, rotationGain)
+	if phys.getPhysicsObject then
+		self.phys = phys:getPhysicsObject()
+	else
+		self.phys = phys
+	end
 	self.masscenter = self.phys:getMassCenter()
 	self:refreshMassInertia()
 	self:setGain(translationGain, rotationGain)
-	self.targetPos = ent:getPos()
-	self.targetAng = ent:getMatrix()
+	self.targetAng = self.phys:getMatrix()
+	self.targetPos = self.targetAng*self.phys:getMassCenter()
 	self.targetVel = Vector()
 	self.targetAngVel = Vector()
 	return self
@@ -51,16 +52,12 @@ end
 
 function EntityCriticalPD:refreshMassInertia()
 	self.mass = self.phys:getMass()
-	
-	local i = self.phys:getInertia()
-	self.ixx = (i[2] + i[3] - i[1])/2
-	self.iyy = (i[1] + i[3] - i[2])/2
-	self.izz = (i[1] + i[2] - i[3])/2
+	self.inertia = self.phys:getInertia()
 end
 
 function EntityCriticalPD:getInertiaFromAxis(axis)
 	axis = self.phys:worldToLocalVector(axis)
-	return self.ixx*(1-axis[1]^2) + self.iyy*(1-axis[2]^2) + self.izz*(1-axis[3]^2)
+	return self.inertia[1]*axis[1]^2 + self.inertia[2]*axis[2]^2 + self.inertia[3]*axis[3]^2
 end
 
 function EntityCriticalPD:simulateForce()
@@ -68,12 +65,19 @@ function EntityCriticalPD:simulateForce()
 	local x = self.targetPos - self.phys:localToWorld(self.masscenter)
 	local dx = self.targetVel - self.phys:getVelocity()
 	local force = x*self.fk + dx*self.fc
+	self.posError = force
+	self.phys:applyForceCenter(force*self.mass)
+end
+
+function EntityCriticalPD:simulateForceCustomError(x, dx)
+	-- Calculate force
+	local force = x*self.fk + dx*self.fc
 	self.phys:applyForceCenter(force*self.mass)
 end
 
 function EntityCriticalPD:simulateAngForce()
 	-- Calculate torque
-	local m = self.ent:getMatrix()
+	local m = self.phys:getMatrix()
 	local axis, ang = (self.targetAng*m:getInverseTR()):getAxisAngle()
 	local t = axis*math.deg(ang)
 	local dt = self.targetAngVel-self.phys:localToWorldVector(self.phys:getAngleVelocity())
@@ -96,6 +100,17 @@ function EntityCriticalPD:simulateAngForceCustomError(t, dt)
 		local applytorque = torque*self:getInertiaFromAxis(torque:getNormalized())
 		self.phys:applyTorque(applytorque)
 	end
+end
+
+function EntityCriticalPD:calcAngForceCustomError(t, dt)
+	-- Calculate torque
+	local torque = t*self.tk + dt*self.tc
+			
+	-- Make sure torque isn't null vector or singularity will happen with torque:getNormalized()
+	if torque[1]~=0 or torque[2]~=0 or torque[3]~=0 then
+		return torque*self:getInertiaFromAxis(torque:getNormalized())
+	end
+	return Vector()
 end
 
 
