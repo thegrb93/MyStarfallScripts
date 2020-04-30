@@ -50,7 +50,7 @@ local ragdolleventdriver = class("ragdolleventdriver")
 local ragdollanimeditor = class("ragdollanimeditor")
 
 local frametime = timer.frametime()
-local gravity = physenv.getGravity().z*frametime
+local gravity = physenv.getGravity()[3]*frametime
 local nullvector = Vector()
 local tasks = {}
 local function task(f)
@@ -716,7 +716,7 @@ end
 local footmins, footmaxs = Vector(-5,-5,-0.01), Vector(5,5,0.01)
 function ragdollanimcontroller:getHeight(originpos)
     if not originpos then originpos = self.origin:getTranslation() end
-    return originpos.z - trace.traceHull(originpos, originpos + Vector(0,0,-2^16), footmins, footmaxs, self.ent).HitPos.z
+    return originpos[3] - trace.traceHull(originpos, originpos + Vector(0,0,-2^16), footmins, footmaxs, self.ent).HitPos[3]
 end
 
 function ragdollanimcontroller:setOriginWithHeight(originpos)
