@@ -34,7 +34,7 @@ if SERVER then
                     end
                 end
                 i = 1
-                timer.create("SpawnProps", 0, 0, function()
+                hook.add("think","",function()
                     while quotaAverage()<0.1*quotaMax() and prop.canSpawn() do
                         if i>#props then timer.remove("SpawnProps") break end
                         local p = props[i]
