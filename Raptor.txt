@@ -1,0 +1,289 @@
+--@name Raptor
+--@author Sparky ovo
+--@server
+--@include libs/criticalpd.txt
+
+-- Spawn one of the following raptor models and place this chip.
+-- Push e on his back to mount
+
+local raptors = {
+    ["raptorpc.mdl"] = true,
+    ["raptor2pc.mdl"] = true,
+    ["raptorfeatheredpc.mdl"] = true,
+}
+
+local criticalpd = require("libs/criticalpd.txt")
+local raptor = class("raptor")
+local posgain, anggain = 150, 300
+local frametime = timer.frametime()
+
+function raptor:initialize(body)
+    self.body = body
+    self.pelvis = criticalpd:new(body:getPhysicsObjectNum(0), posgain, anggain)
+    self.head = criticalpd:new(body:getPhysicsObjectNum(21), posgain, anggain)
+    self.jaw = criticalpd:new(body:getPhysicsObjectNum(22), 0, anggain*10)
+    self.handr = criticalpd:new(body:getPhysicsObjectNum(17), posgain, anggain)
+    self.handl = criticalpd:new(body:getPhysicsObjectNum(23), posgain, anggain)
+    self.footr = criticalpd:new(body:getPhysicsObjectNum(11), posgain*2, anggain*2)
+    self.footl = criticalpd:new(body:getPhysicsObjectNum(24), posgain*2, anggain*2)
+
+    local m = self.pelvis.targetAng:clone()
+    m:rotate(Angle(-90,0,-100))
+    m:translate(Vector(0,5,5))
+
+    local chair = prop.createSent(m:getTranslation(),m:getAngles(),"Seat_Airboat")
+    chair:setColor(Color(0,0,0,0))
+    constraint.weld(chair, body, 0, 0)
+    --constraint.nocollide(chair, body)
+    chair:setCollisionGroup(COLLISION_GROUP.WORLD)
+    self.chair = chair
+
+    local pelvisoffset = Matrix()
+    pelvisoffset:setAngles(Angle(-10,0,90))
+    self.pelvisoffset = pelvisoffset
+
+    local footroffset = Matrix()
+    footroffset:setTranslation(Vector(5,-40,7))
+    footroffset:setAngles(Angle(0,0,0))
+    self.footroffset = footroffset
+
+    local footloffset = Matrix()
+    footloffset:setTranslation(Vector(5,-40,-7))
+    footloffset:setAngles(Angle(0,180,0))
+    self.footloffset = footloffset
+
+    local handroffset = Matrix()
+    handroffset:setTranslation(Vector(40,0,10))
+    handroffset:setAngles(Angle(0,0,0))
+    self.handroffset = handroffset
+
+    local handloffset = Matrix()
+    handloffset:setTranslation(Vector(40,0,-10))
+    handloffset:setAngles(Angle(0,180,0))
+    self.handloffset = handloffset
+
+    local jawoffset = Matrix()
+    jawoffset:setAngles(Angle(0,-90,0))
+    self.jawoffset = jawoffset
+
+    local headoffset = Matrix()
+    headoffset:setTranslation(Vector(40,40,0))
+    headoffset:setAngles(Angle(0,60,0))
+    self.headoffset = headoffset
+
+    self.yaw = self.pelvis.phys:getAngles()[2]
+    self.pos = self.pelvis:massCenter()
+    self.walkcycle = 0
+    self.move = Vector()
+
+    hook.add("think",tostring(self),function() self:think() end)
+end
+
+function raptor:setGravity(enabled)
+    if enabled~=self.gravity then
+        self.gravity = enabled
+        for i = 0, self.body:getPhysicsObjectCount()-1 do
+            self.body:getPhysicsObjectNum(i):enableGravity(enabled)
+        end
+        self.chair:getPhysicsObject():enableGravity(enabled)
+    end
+end
+
+function raptor:controls()
+    local driver = self.chair:getDriver()
+    if driver:isValid() then
+        self.driver = driver
+        self.aimyaw = driver:getEyeAngles()[2]
+        self.aimyawdiff = (self.aimyaw - self.yaw + 180) % 360 - 180
+
+        local dir
+        if driver:keyDown(IN_KEY.FORWARD) then
+            if driver:keyDown(IN_KEY.MOVERIGHT) then dir =  Vector(0.7071068, -0.7071068, 0)
+            elseif driver:keyDown(IN_KEY.MOVELEFT) then dir = Vector(0.7071068, 0.7071068, 0)
+            else dir = Vector(1, 0, 0)
+            end
+        elseif driver:keyDown(IN_KEY.BACK) then
+            if driver:keyDown(IN_KEY.MOVERIGHT) then dir = Vector(-0.7071068, -0.7071068, 0)
+            elseif driver:keyDown(IN_KEY.MOVELEFT) then dir = Vector(-0.7071068, 0.7071068, 0)
+            else dir = Vector(-1, 0, 0)
+            end
+        else
+            if driver:keyDown(IN_KEY.MOVERIGHT) then dir = Vector(0, -1, 0)
+            elseif driver:keyDown(IN_KEY.MOVELEFT) then dir = Vector(0, 1, 0)
+            else dir = Vector(0, 0, 0)
+            end
+        end
+
+        self.sprinting = driver:keyDown(IN_KEY.SPEED)
+
+        local syaw = math.sin(math.rad(self.yaw))
+        local cyaw = math.cos(math.rad(self.yaw))
+        self.move = self.move*0.95 + Vector(dir[1]*cyaw-dir[2]*syaw, dir[2]*cyaw+dir[1]*syaw, 0)*(self.sprinting and 22 or 10)
+
+        if not self.gravity then
+            local prevjump = self.jumping
+            self.jumping = driver:keyDown(IN_KEY.JUMP)
+            if self.jumping and not prevjump then
+                self.jumped = 20
+            end
+        end
+    else
+        self.driver = nil
+        self.aimyaw = self.yaw
+        self.aimyawdiff = 0
+        self.move = self.move*0.02
+        self.sprinting = false
+        self.jumping = false
+    end
+    self.movespeed = self.move:getLength()
+end
+
+local mins, maxs = Vector(-4), Vector(4)
+function raptor:calcfeet(pelvismatrix, pelvisvel)
+    local footrange = 20
+    local rfrac, lfrac
+    local lpos, rpos, lvel, rvel
+    local lfootup, rfootup, fforward, fup, amplitude, cyclevel
+    if self.movespeed > 1 and not self.gravity then
+        local cyclespeed = 1.3333 - self.movespeed*0.0001333
+        self.walkcycle = self.walkcycle + cyclespeed*frametime
+        lfootup = math.max((self.walkcycle%1)-0.5, 0)*2*math.pi
+        rfootup = math.max(((self.walkcycle+0.5)%1)-0.5, 0)*2*math.pi
+
+        fforward = self.move / self.movespeed
+        fup = Vector(0,0,1)
+        fforward:sub(fup*fup:dot(fforward))
+        fforward:normalize()
+        if fforward[1]~=fforward[1] then fforward = Vector() end
+
+        amplitude = (self.movespeed/60 + 20)
+        cyclevel = amplitude*cyclespeed
+    else
+        lfootup = 0
+        rfootup = 0
+    end
+    do
+        local footorigin = pelvismatrix*self.footroffset
+        local trpos = self.footr:massCenter()
+        local tr = trace.traceHull(trpos + Vector(0,0,footrange), trpos + Vector(0,0,-footrange), mins, maxs, self.body)
+        rfrac = tr.Fraction
+        if rfootup>0 then
+            rpos = footorigin:getTranslation() + fforward*(math.sin(rfootup*0.5)*amplitude) + fup*(math.sin(rfootup)*amplitude)
+            rvel = pelvisvel + fforward*(math.cos(rfootup*0.5)*cyclevel*0.5) + fup*(math.cos(rfootup)*cyclevel)
+            footorigin:setTranslation(rpos)
+        elseif self.gravity then
+            rpos = footorigin:getTranslation()
+            rvel = pelvisvel
+        else
+            rpos = tr.HitPos
+            rvel = Vector()
+            footorigin:setTranslation(footorigin:getTranslation():setZ(rpos[3])*0.1 + rpos*0.9)
+        end
+        self.footr:setTargetMatrix(footorigin)
+    end
+    do
+        local footorigin = pelvismatrix*self.footloffset
+        local trpos = self.footl:massCenter()
+        local tr = trace.traceHull(trpos + Vector(0,0,footrange), trpos + Vector(0,0,-footrange), mins, maxs, self.body)
+        lfrac = tr.Fraction
+        if lfootup>0 then
+            lpos = footorigin:getTranslation() + fforward*(math.sin(lfootup*0.5)*amplitude) + fup*(math.sin(lfootup)*amplitude)
+            lvel = pelvisvel + fforward*(math.cos(lfootup*0.5)*cyclevel*0.5) + fup*(math.cos(lfootup)*cyclevel)
+            footorigin:setTranslation(lpos)
+        elseif self.gravity then
+            lpos = footorigin:getTranslation()
+            lvel = pelvisvel
+        else
+            lpos = tr.HitPos
+            lvel = Vector()
+            footorigin:setTranslation(footorigin:getTranslation():setZ(lpos[3])*0.1 + lpos*0.9)
+        end
+        self.footl:setTargetMatrix(footorigin)
+    end
+    if rfrac>0.9 and lfrac>0.9 then
+        self:setGravity(true)
+    else
+        self.pos:setZ(math.min(rpos[3], lpos[3])+35)
+        self:setGravity(false)
+    end
+    self.footr.targetVel = rvel
+    self.footl.targetVel = lvel
+end
+
+function raptor:calcpelvis(pelvismatrix)
+    local yaw = self.pelvis.phys:getAngles()[2]
+    local pos = self.pelvis:massCenter()
+
+    local yawdiff = (yaw - self.yaw + 180) % 360 - 180
+    if math.abs(yawdiff)>10 then
+        self.yaw = self.yaw + yawdiff*(1 - 10/math.abs(yawdiff))
+    end
+
+    local posdiff = pos - self.pos
+    local len2 = posdiff:getLengthSqr()
+    if len2>100 then
+        self.pos = self.pos + posdiff*(1 - math.sqrt(100/len2))
+    end
+
+    if self.movespeed>30 then
+        self.pos = self.pos + self.move*frametime
+        self.yaw = self.yaw + self.aimyawdiff*1300/(self.movespeed+500)*frametime
+    end
+
+    self.pelvis:setTarget(self.pos, Angle(0, self.yaw, 90))
+    if not self.gravity then
+        self.pelvis.targetVel = self.move + Vector(0,0,math.sin(((self.walkcycle*2)%1)*2*math.pi)*(self.movespeed/4+10))
+    end
+    if self.jumped then
+        self.pelvis.phys:applyForceCenter(Vector(0,0,100000*frametime))
+        self.pelvis.targetVel[3] = self.pelvis.targetVel[3] + 1000
+        self.jumped = self.jumped - 1
+        if self.jumped == 0 then self.jumped = nil end
+    end
+end
+
+function raptor:calchead(pelvismatrix)
+    self.headoffset:setAngles(Angle(self.aimyawdiff,0,0))
+    self.headoffset:rotate(Angle(0,60,0))
+
+    local headmatrix = pelvismatrix*self.headoffset
+    self.head:setTargetMatrix(headmatrix)
+    self.jaw:setTargetMatrix(headmatrix*self.jawoffset)
+end
+
+function raptor:think()
+    local pelvismatrix = self.pelvis:massCenterMatrix()
+    local pelvisvel = self.pelvis.phys:getVelocity()
+
+    self:controls()
+    self:calcfeet(pelvismatrix, pelvisvel)
+    self:calcpelvis(pelvismatrix)
+    self:calchead(pelvismatrix)
+
+    self.handr:setTargetMatrix(pelvismatrix*self.handroffset)
+    self.handl:setTargetMatrix(pelvismatrix*self.handloffset)
+
+    if self.gravity then
+        self.pelvis:simulateAngForce()
+    else
+        self.pelvis:simulate()
+    end
+
+    self.head.targetVel = pelvisvel
+    self.jaw.targetVel = pelvisvel
+    self.handr.targetVel = pelvisvel
+    self.handl.targetVel = pelvisvel
+
+    self.head:simulate()
+    self.jaw:simulate()
+    self.handr:simulate()
+    self.handl:simulate()
+    self.footr:simulate()
+    self.footl:simulate()
+end
+
+
+local e = find.closest(find.byClass("prop_ragdoll",function(e) return e:getOwner()==owner() and raptors[string.getFileFromFilename(e:getModel())] end), chip():getPos())
+if not e then error("No raptor found!") end
+raptor:new(e)
+
