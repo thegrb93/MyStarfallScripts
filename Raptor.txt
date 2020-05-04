@@ -3,6 +3,7 @@
 --@server
 --@include libs/criticalpd.txt
 
+-- Requires https://steamcommunity.com/sharedfiles/filedetails/?id=108221024
 -- Spawn one of the following raptor models and place this chip.
 -- Push e on his back to mount
 
