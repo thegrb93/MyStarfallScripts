@@ -559,6 +559,7 @@ function ragdollbonedriver:initialize(ent, bone, origin, originang, originvel, o
     self.ent = ent
     self.bone = bone
     self.mass = bone:getMass()
+    self.inertia = bone:getInertia()
     self.origin = origin
     self.originang = originang
     self.originvel = originvel
@@ -588,7 +589,11 @@ function ragdollbonedriver:add(pos, vel, ang, angvel, weight)
     self.totalweight = self.totalweight + weight
 end
 
-local tk, tc, fk, fc = 0.030, 0.002, 6, 0.5
+local tk, tc, fk, fc
+tk = 200*timer.frametime()
+tc = math.sqrt(tk*timer.frametime())*2 --critical translation damping coefficient
+fk = 200*timer.frametime()
+fc = math.sqrt(fk*timer.frametime())*2 --critical rotation damping coefficient
 function ragdollbonedriver:think()
     if self.disabled or self.totalweight == 0 then return end
 
@@ -613,11 +618,14 @@ end
 function ragdollbonedriver:angularForce(pos, vel)
     local bone = self.bone
     local axis, theta = (pos*bone:getMatrix():getInverseTR()):getAxisAngle()
+    local localaxis = bone:worldToLocalVector(axis)
     local t = axis*math.deg(theta)
     local dt = vel - bone:localToWorldVector(bone:getAngleVelocity())
 
+    local inertia = self.inertia[1]*localaxis[1]^2 + self.inertia[2]*localaxis[2]^2 + self.inertia[3]*localaxis[3]^2
+
     local torque = t*tk + dt*tc
-    bone:applyTorque(torque*self.mass^2)
+    bone:applyTorque(torque*inertia)
 end
 
 function ragdollflexdriver:initialize(ent, flexindex)
