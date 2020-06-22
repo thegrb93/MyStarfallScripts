@@ -91,15 +91,17 @@ if CLIENT then
         
         self.loading = true
         
-        http.get("https://e621.net/post/index.json?limit=64&tags="..http.urlEncode(self.searching).."&page="..(self.pagesloaded + 1), function(body)
+        http.get("https://e621.net/posts.json?limit=64&tags="..http.urlEncode(self.searching).."&page="..(self.pagesloaded + 1), function(body)
             local data = json.decode(body)
-            if #data > 0 then
+            if type(data.posts)=="table" and #data.posts > 0 then
                 self.pagesloaded = self.pagesloaded + 1
                 local links = {}
-                for k, v in pairs(data) do
-                    local ext = string.getExtensionFromFilename( v.file_url )
-                    if not (ext=="swf" or ext=="webm") then
-                        links[#links + 1] = v.file_url
+                for k, v in pairs(data.posts) do
+                    if v.file and v.file.url then
+                        local ext = string.getExtensionFromFilename( v.file.url )
+                        if not (ext=="swf" or ext=="webm") then
+                            links[#links + 1] = v.file.url
+                        end
                     end
                 end
                 net.start("gotlinks")
