@@ -89,7 +89,7 @@ function car:simulate()
         if self.joystickSteer then
             self.turninv = self.joystickSteer*targetradiusinv
             self.throttle = self.joystickThrottle
-            --self.brake = self.joystickBrake
+            self.brake = 0
         else
             if a then
                 self.turninv = self.turninv*0.9-targetradiusinv*0.1
