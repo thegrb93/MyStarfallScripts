@@ -106,10 +106,10 @@ if SERVER then
     end)
     
     xinput = {}
-    function xinput.setListeners(ply, listeners, enabled)
+    function xinput.setListeners(ply, list, enabled)
         local found = {}
         for k, v in pairs(listeners) do
-            if string.find(listeners, k) then
+            if string.find(list, k) then
                 found[#found+1] = v.id
             end
         end
