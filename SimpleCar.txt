@@ -1,0 +1,185 @@
+--@name SimpleCar
+--@author Sparky
+--@server
+--@include libs/criticalpd.txt
+--@include libs/xinput.txt
+--@clientmain libs/xinput.txt
+
+local brakepower = 1 -- Brake multiplier
+local throttlepower = 500 -- Throttle multiplier
+local maxAngSpeed = 3500 -- Max tire angular velocity
+local minTurnRadius = 175.019 -- Minimum turn radius
+local maxTurnAcceleration = 800 -- 800 is 1G
+local carForward = Vector(0,0,-1) -- Vector local to car body pointing forward
+local carRight = Vector(0,-1,0) -- Vector local to car body pointing right
+
+require("libs/xinput.txt")
+local criticalpd = require("libs/criticalpd.txt")
+local wheel = class("wheel")
+local steering = class("steering", wheel)
+local car = class("car")
+
+function wheel:initialize(car, ent)
+    self.pd = criticalpd:new(ent, 0, 500)
+    self.car = car
+    self.ent = ent
+    self.forward = self.pd.phys:worldToLocalVector(car.bodyPhys:localToWorldVector(car.right))
+    self.radius = ent:obbMaxs()[1]
+end
+
+function wheel:simulate()
+    self.pd:simulateAngForceCustomError(Vector(), self:calcSpeed()-self.pd.phys:localToWorldVector(self.ent:getAngleVelocity()))
+end
+
+function wheel:calcSpeed()
+    local throttle = self.car.throttle
+    local brake = self.car.brake
+    local wheelvel = self.ent:getAngleVelocity():dot(self.forward)
+    
+    local speed = math.clamp((self.car.bodyrotvel - wheelvel)*brake*brakepower + wheelvel - throttle*throttlepower, -maxAngSpeed, maxAngSpeed)
+    return self.pd.phys:localToWorldVector(self.forward) * speed
+end
+
+function steering:initialize(car, ent, forward)
+    wheel.initialize(self, car, ent, forward)
+end
+
+function steering:simulate(turndir, sign)
+    local phys = self.pd.phys
+    local forward = phys:localToWorldVector(self.forward)
+    
+    local axis = forward:cross(turndir):getNormalized()
+    local angleDeg = math.deg(math.acos(math.clamp(turndir:dot(forward), -1, 1)))
+    
+    self.pd:simulateAngForceCustomError(axis*angleDeg, self.car.bodyangvel+self:calcSpeed()-phys:localToWorldVector(self.ent:getAngleVelocity()))
+end
+
+function car:initialize(forward, right, body, chair, wheelfr, wheelfl, wheelbr, wheelbl)
+    self.body = body
+    self.joystickSteer = nil
+    self.forward = forward
+    self.right = right
+    self.bodyPhys = body:getPhysicsObject()
+    self.chair = chair
+    self.wheelfr = steering:new(self, wheelfr)
+    self.wheelfl = steering:new(self, wheelfl)
+    self.wheelbr = wheel:new(self, wheelbr)
+    self.wheelbl = wheel:new(self, wheelbl)
+    self.turninv = 0
+    self.throttle = 0
+    self.brake = 1
+end
+
+function car:simulate()
+    self.bodyvel = self.bodyPhys:worldToLocalVector(self.body:getVelocity()):dot(self.forward)
+    local angvel = self.body:getAngleVelocity()
+    self.bodyrotvel = angvel:dot(self.right)
+    self.bodyangvel = self.bodyPhys:localToWorldVector(angvel)
+
+    if self.driver then
+        local w, a, s, d, turbo, brake = 
+        self.driver:keyDown(IN_KEY.FORWARD), 
+        self.driver:keyDown(IN_KEY.MOVELEFT), 
+        self.driver:keyDown(IN_KEY.BACK), 
+        self.driver:keyDown(IN_KEY.MOVERIGHT),
+        self.driver:keyDown(IN_KEY.SPEED),
+        self.driver:keyDown(IN_KEY.JUMP)
+        
+        local targetradiusinv = math.clamp(maxTurnAcceleration/self.bodyvel^2, 0, 1/minTurnRadius)
+        if self.joystickSteer then
+            self.turninv = self.joystickSteer*targetradiusinv
+            self.throttle = self.joystickThrottle
+            --self.brake = self.joystickBrake
+        else
+            if a then
+                self.turninv = self.turninv*0.9-targetradiusinv*0.1
+            elseif d then
+                self.turninv = self.turninv*0.9+targetradiusinv*0.1
+            else
+                self.turninv = self.turninv*0.5
+            end
+            self.throttle = (w and (turbo and 2 or 1)) or (s and (turbo and -2 or -1)) or 0
+            self.brake = brake and 1 or 0
+        end
+    else
+        self.throttle = 0
+        self.brake = 1
+        self.joystickSteer = nil
+    end
+    
+    local right = self.bodyPhys:localToWorldVector(self.right)
+    local turndirR, turndirL
+    if math.abs(self.turninv)<0.000001 then
+        turndirR = right
+        turndirL = right
+    else
+        local wheelfrPos = self.wheelfr.ent:getMassCenterW()
+        local wheelflPos = self.wheelfl.ent:getMassCenterW()
+        local wheelbrPos = self.wheelbr.ent:getMassCenterW()
+        local wheelblPos = self.wheelbl.ent:getMassCenterW()
+        local pivot = (wheelblPos+wheelbrPos)/2
+        local turn = pivot + right*(1/self.turninv)
+        local turnSign = math.sign(self.turninv)
+        turndirR = (turn - wheelfrPos):getNormalized()*turnSign
+        turndirL = (turn - wheelflPos):getNormalized()*turnSign
+    end
+    
+    self.wheelfr:simulate(turndirR)
+    self.wheelfl:simulate(turndirL)
+    self.wheelbr:simulate()
+    self.wheelbl:simulate()
+end
+
+function car:setDriver(driver)
+    self.driver = driver
+end
+
+
+local mycar
+local ports = {
+    Body = {type = "entity"},
+    Chair = {type = "entity"},
+    WheelFR = {type = "entity"},
+    WheelFL = {type = "entity"},
+    WheelBR = {type = "entity"},
+    WheelBL = {type = "entity"}
+}
+wire.adjustPorts(ports)
+hook.add("input","",function(name,value)
+    ports[name].value = value
+    for k, v in pairs(ports) do
+        if not isValid(v.value) then
+            hook.remove("think","simulate")
+            mycar = nil
+            return
+        end
+    end
+    mycar = car:new(carForward, carRight, ports.Body.value, ports.Chair.value, ports.WheelFR.value, ports.WheelFL.value, ports.WheelBR.value, ports.WheelBL.value)
+    hook.add("think","simulate",function() mycar:simulate() end)
+end)
+
+hook.add("playerenteredvehicle","",function(ply,veh)
+    if mycar and mycar.chair == veh then
+        mycar:setDriver(ply)
+        xinput.enablePlayer(ply,"sThumbLX bRightTrigger bLeftTrigger")
+    end
+end)
+
+hook.add("playerleavevehicle","",function(ply,veh)
+    if mycar and mycar.chair == veh then
+        mycar:setDriver(nil)
+        xinput.disablePlayer(ply,"sThumbLX bRightTrigger bLeftTrigger")
+    end
+end)
+
+hook.add("xinput","",function(ply, data)
+    if mycar then
+        if mycar.driver == ply then
+            mycar.joystickSteer = data.sThumbLX/32768
+            mycar.joystickThrottle = data.bRightTrigger/255 - data.bLeftTrigger/255
+        else
+            xinput.disablePlayer(ply,"sThumbLX bRightTrigger bLeftTrigger")
+        end
+    end
+end)
+

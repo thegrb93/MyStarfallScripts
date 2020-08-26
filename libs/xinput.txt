@@ -1,0 +1,157 @@
+--@name Xinput
+--@author Sparky
+--@shared
+
+local listener = class("listener")
+local axislistener = class("axislistener",listener)
+local triggerlistener = class("triggerlistener",listener)
+local buttonlistener = class("buttonlistener",listener)
+
+listener.idcount = 0
+function listener:initialize()
+    self.id = listener.idcount
+    listener.idcount = listener.idcount + 1
+end
+
+function axislistener:initialize(index)
+    listener.initialize(self)
+    self.index = index
+end
+
+function axislistener:update(state)
+    local axis = state[self.index]
+    if axis ~= self.axis then
+        self.axis = axis
+        return true
+    end
+    return false
+end
+
+function axislistener:send()
+    net.writeInt(self.axis, 16)
+end
+
+function axislistener:recv()
+    return net.readInt(16)
+end
+
+function triggerlistener:initialize(index)
+    listener.initialize(self)
+    self.index = index
+end
+
+function triggerlistener:update(state)
+    local trigger = state[self.index]
+    if trigger ~= self.trigger then
+        self.trigger = trigger
+        return true
+    end
+    return false
+end
+
+function triggerlistener:send()
+    net.writeUInt(self.trigger, 8)
+end
+
+function triggerlistener:recv()
+    return net.readUInt(8)
+end
+
+function buttonlistener:initialize()
+    listener.initialize(self)
+end
+
+function buttonlistener:update(state)
+    local buttons = state.wButtons
+    if buttons ~= self.buttons then
+        self.buttons = buttons
+        return true
+    end
+    return false
+end
+
+function buttonlistener:send()
+    net.writeInt(self.buttons, 14)
+end
+
+function buttonlistener:recv()
+    return net.readInt(14)
+end
+
+local listeners = {
+    sThumbLX = axislistener:new("sThumbLX"),
+    sThumbLY = axislistener:new("sThumbLY"),
+    sThumbRX = axislistener:new("sThumbRX"),
+    sThumbRY = axislistener:new("sThumbRY"),
+    bLeftTrigger = triggerlistener:new("bLeftTrigger"),
+    bRightTrigger = triggerlistener:new("bRightTrigger"),
+    wButtons = buttonlistener:new(),
+}
+local listenersByID = {}
+for k, v in pairs(listeners) do
+    listenersByID[v.id] = k
+end
+
+if SERVER then
+    local state = {}
+    net.receive("xinput",function(len,ply)
+        for i=1, net.readUInt(8) do
+            local listener = listenersByID[net.readUInt(8)]
+            state[listener] = listeners[listener]:recv()
+        end
+        hook.run("xinput", ply, state)
+    end)
+    
+    xinput = {}
+    function xinput.enablePlayer(ply, listeners)
+        net.start("xinput")
+        net.writeBool(true)
+        net.writeString(listeners)
+        net.send(ply)
+    end
+
+    function xinput.disablePlayer(ply, listeners)
+        net.start("xinput")
+        net.writeBool(false)
+        net.writeString(listeners)
+        net.send(ply)
+    end
+elseif xinput then
+    local enabledListeners = {}
+    net.receive("xinput",function(len)
+        local enable = net.readBool()
+        local list = net.readString()
+        local found = {}
+        for k, v in pairs(listeners) do
+            if string.find(list, k) then
+                enabledListeners[v] = (enable == true or nil)
+            end
+        end
+        if next(enabledListeners) then
+            hook.add("think","xinput",xinput.think)
+        else
+            hook.remove("think","xinput")
+        end
+    end)
+    
+    function xinput.think()
+        local state = xinput.getState(0)
+        local updateCount = 0
+        local updates = {}
+        for v in pairs(enabledListeners) do
+            if v:update(state) then
+                updateCount = updateCount + 1
+                updates[v] = true
+            end
+        end
+        if updateCount>0 then
+            net.start("xinput")
+            net.writeUInt(updateCount, 8)
+            for v in pairs(updates) do
+                net.writeUInt(v.id, 8)
+                v:send()
+            end
+            net.send(nil, true)
+        end
+    end
+end
