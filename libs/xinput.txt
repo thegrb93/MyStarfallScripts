@@ -106,29 +106,32 @@ if SERVER then
     end)
     
     xinput = {}
-    function xinput.enablePlayer(ply, listeners)
-        net.start("xinput")
-        net.writeBool(true)
-        net.writeString(listeners)
-        net.send(ply)
+    function xinput.setListeners(ply, listeners, enabled)
+        local found = {}
+        for k, v in pairs(listeners) do
+            if string.find(listeners, k) then
+                found[#found+1] = v.id
+            end
+        end
+        if #found>0 then
+            net.start("xinput")
+            net.writeBool(enabled)
+            net.writeUInt(#found, 8)
+            for k, v in ipairs(found) do
+                net.writeUInt(v, 8)
+            end
+            net.send(ply)
+        else
+            error("Didn't find any matching xinput listeners!")
+        end
     end
 
-    function xinput.disablePlayer(ply, listeners)
-        net.start("xinput")
-        net.writeBool(false)
-        net.writeString(listeners)
-        net.send(ply)
-    end
 elseif xinput then
     local enabledListeners = {}
     net.receive("xinput",function(len)
         local enable = net.readBool()
-        local list = net.readString()
-        local found = {}
-        for k, v in pairs(listeners) do
-            if string.find(list, k) then
-                enabledListeners[v] = (enable == true or nil)
-            end
+        for i=1, net.readUInt(8) do
+            enabledListeners[listeners[listenersByID[net.readUInt(8)]]] = (enable == true or nil)
         end
         if next(enabledListeners) then
             hook.add("think","xinput",xinput.think)

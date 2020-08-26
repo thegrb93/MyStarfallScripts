@@ -161,14 +161,14 @@ end)
 hook.add("playerenteredvehicle","",function(ply,veh)
     if mycar and mycar.chair == veh then
         mycar:setDriver(ply)
-        xinput.enablePlayer(ply,"sThumbLX bRightTrigger bLeftTrigger")
+        xinput.setListeners(ply, "sThumbLX bRightTrigger bLeftTrigger", true)
     end
 end)
 
 hook.add("playerleavevehicle","",function(ply,veh)
     if mycar and mycar.chair == veh then
         mycar:setDriver(nil)
-        xinput.disablePlayer(ply,"sThumbLX bRightTrigger bLeftTrigger")
+        xinput.setListeners(ply, "sThumbLX bRightTrigger bLeftTrigger", false)
     end
 end)
 
@@ -178,7 +178,7 @@ hook.add("xinput","",function(ply, data)
             mycar.joystickSteer = data.sThumbLX/32768
             mycar.joystickThrottle = data.bRightTrigger/255 - data.bLeftTrigger/255
         else
-            xinput.disablePlayer(ply,"sThumbLX bRightTrigger bLeftTrigger")
+            xinput.setListeners(ply, "sThumbLX bRightTrigger bLeftTrigger", false)
         end
     end
 end)
