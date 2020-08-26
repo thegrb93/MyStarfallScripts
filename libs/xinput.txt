@@ -93,8 +93,11 @@ for k, v in pairs(listeners) do
 end
 
 if SERVER then
-    local state = {}
+    local states = setmetatable({},{__mode="k"})
     net.receive("xinput",function(len,ply)
+        local state = states[ply]
+        if not state then state = {} states[ply] = state end
+        
         for i=1, net.readUInt(8) do
             local listener = listenersByID[net.readUInt(8)]
             state[listener] = listeners[listener]:recv()
