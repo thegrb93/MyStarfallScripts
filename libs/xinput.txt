@@ -8,27 +8,27 @@ local triggerlistener = class("triggerlistener",listener)
 local buttonlistener = class("buttonlistener",listener)
 
 listener.idcount = 0
-function listener:initialize()
+function listener:initialize(index)
+    self.index = index
     self.id = listener.idcount
     listener.idcount = listener.idcount + 1
 end
 
-function axislistener:initialize(index)
-    listener.initialize(self)
-    self.index = index
-end
-
-function axislistener:update(state)
-    local axis = state[self.index]
-    if axis ~= self.axis then
-        self.axis = axis
+function listener:update(state)
+    local data = state[self.index]
+    if data ~= self.data then
+        self.data = data
         return true
     end
     return false
 end
 
+function axislistener:initialize(index)
+    listener.initialize(self, index)
+end
+
 function axislistener:send()
-    net.writeInt(self.axis, 16)
+    net.writeInt(self.data, 16)
 end
 
 function axislistener:recv()
@@ -36,42 +36,23 @@ function axislistener:recv()
 end
 
 function triggerlistener:initialize(index)
-    listener.initialize(self)
-    self.index = index
-end
-
-function triggerlistener:update(state)
-    local trigger = state[self.index]
-    if trigger ~= self.trigger then
-        self.trigger = trigger
-        return true
-    end
-    return false
+    listener.initialize(self, index)
 end
 
 function triggerlistener:send()
-    net.writeUInt(self.trigger, 8)
+    net.writeUInt(self.data, 8)
 end
 
 function triggerlistener:recv()
     return net.readUInt(8)
 end
 
-function buttonlistener:initialize()
-    listener.initialize(self)
-end
-
-function buttonlistener:update(state)
-    local buttons = state.wButtons
-    if buttons ~= self.buttons then
-        self.buttons = buttons
-        return true
-    end
-    return false
+function buttonlistener:initialize(index)
+    listener.initialize(self, index)
 end
 
 function buttonlistener:send()
-    net.writeInt(self.buttons, 14)
+    net.writeInt(self.data, 14)
 end
 
 function buttonlistener:recv()
@@ -85,11 +66,11 @@ local listeners = {
     sThumbRY = axislistener:new("sThumbRY"),
     bLeftTrigger = triggerlistener:new("bLeftTrigger"),
     bRightTrigger = triggerlistener:new("bRightTrigger"),
-    wButtons = buttonlistener:new(),
+    wButtons = buttonlistener:new("wButtons"),
 }
 local listenersByID = {}
 for k, v in pairs(listeners) do
-    listenersByID[v.id] = k
+    listenersByID[v.id] = v
 end
 
 if SERVER then
@@ -100,7 +81,7 @@ if SERVER then
         
         for i=1, net.readUInt(8) do
             local listener = listenersByID[net.readUInt(8)]
-            state[listener] = listeners[listener]:recv()
+            state[listener.index] = listener:recv()
         end
         hook.run("xinput", ply, state)
     end)
@@ -131,7 +112,7 @@ elseif xinput then
     net.receive("xinput",function(len)
         local enable = net.readBool()
         for i=1, net.readUInt(8) do
-            enabledListeners[listeners[listenersByID[net.readUInt(8)]]] = (enable == true or nil)
+            enabledListeners[listenersByID[net.readUInt(8)]] = (enable == true or nil)
         end
         if next(enabledListeners) then
             hook.add("think","xinput",xinput.think)
