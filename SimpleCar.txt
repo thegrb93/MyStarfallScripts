@@ -173,13 +173,11 @@ hook.add("playerleavevehicle","",function(ply,veh)
 end)
 
 hook.add("xinput","",function(ply, data)
-    if mycar then
-        if mycar.driver == ply then
-            mycar.joystickSteer = data.sThumbLX/32768
-            mycar.joystickThrottle = data.bRightTrigger/255 - data.bLeftTrigger/255
-        else
-            xinput.setListeners(ply, "sThumbLX bRightTrigger bLeftTrigger", false)
-        end
+    if mycar and mycar.driver == ply then
+        mycar.joystickSteer = data.sThumbLX/32768
+        mycar.joystickThrottle = data.bRightTrigger/255 - data.bLeftTrigger/255
+    else
+        xinput.setListeners(ply, "sThumbLX bRightTrigger bLeftTrigger", false)
     end
 end)
 
