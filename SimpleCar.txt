@@ -1,19 +1,23 @@
 --@name SimpleCar
 --@author Sparky
---@server
+--@shared
 --@include libs/criticalpd.txt
 --@include libs/xinput.txt
---@clientmain libs/xinput.txt
+
 
 local brakepower = 1 -- Brake multiplier
 local throttlepower = 500 -- Throttle multiplier
 local maxAngSpeed = 3500 -- Max tire angular velocity
 local minTurnRadius = 175.019 -- Minimum turn radius
-local maxTurnAcceleration = 800 -- 800 is 1G
+local maxTurnAcceleration = 1000 -- 800 is 1G
 local carForward = Vector(0,0,-1) -- Vector local to car body pointing forward
 local carRight = Vector(0,-1,0) -- Vector local to car body pointing right
+local hudMatrix = Matrix()
 
 require("libs/xinput.txt")
+
+if SERVER then
+
 local criticalpd = require("libs/criticalpd.txt")
 local wheel = class("wheel")
 local steering = class("steering", wheel)
@@ -134,50 +138,139 @@ function car:setDriver(driver)
     self.driver = driver
 end
 
-
 local mycar
-local ports = {
-    Body = {type = "entity"},
-    Chair = {type = "entity"},
-    WheelFR = {type = "entity"},
-    WheelFL = {type = "entity"},
-    WheelBR = {type = "entity"},
-    WheelBL = {type = "entity"}
-}
-wire.adjustPorts(ports)
-hook.add("input","",function(name,value)
-    ports[name].value = value
-    for k, v in pairs(ports) do
-        if not isValid(v.value) then
-            hook.remove("think","simulate")
-            mycar = nil
-            return
+do
+    local body = chip():isWeldedTo()
+    local chair, chairdot = nil, -math.huge
+    local wheelfr, wheelfrdot = nil, -math.huge 
+    local wheelfl, wheelfldot = nil, -math.huge 
+    local wheelbr, wheelbrdot = nil, -math.huge 
+    local wheelbl, wheelbldot = nil, -math.huge 
+    for _, v in ipairs(constraint.getTable(body)) do
+        local ent = v.Ent1 == body and v.Ent2 or v.Ent1
+        local pos = body:worldToLocal(ent:getMassCenterW())
+        if ent:isVehicle() then
+            local posdot = pos:dot(carForward)-pos:dot(carRight)
+            if posdot > chairdot then
+                chairdot = posdot
+                chair = ent
+            end
+        elseif v.Type == "AdvBallsocket" or v.Type == "Axis" then
+            local posdot
+            posdot = pos:dot(carForward)+pos:dot(carRight)
+            if posdot > wheelfrdot then
+                wheelfrdot = posdot
+                wheelfr = ent
+            end
+            posdot = pos:dot(carForward)-pos:dot(carRight)
+            if posdot > wheelfldot then
+                wheelfldot = posdot
+                wheelfl = ent
+            end
+            posdot = -pos:dot(carForward)+pos:dot(carRight)
+            if posdot > wheelbrdot then
+                wheelbrdot = posdot
+                wheelbr = ent
+            end
+            posdot = -pos:dot(carForward)-pos:dot(carRight)
+            if posdot > wheelbldot then
+                wheelbldot = posdot
+                wheelbl = ent
+            end
         end
     end
-    mycar = car:new(carForward, carRight, ports.Body.value, ports.Chair.value, ports.WheelFR.value, ports.WheelFL.value, ports.WheelBR.value, ports.WheelBL.value)
-    hook.add("think","simulate",function() mycar:simulate() end)
+    if not body then error("Chip isn't welded to the car body!") end
+    if not chair then error("No vehicle welded to car body!") end
+    if not (wheelfr and wheelfl and wheelbr and wheelbl) then error("The car needs 4 wheels!") end
+    mycar = car:new(carForward, carRight, body, chair, wheelfr, wheelfl, wheelbr, wheelbl)
+end
+
+hook.add("think","simulate",function()
+    mycar:simulate()
 end)
 
 hook.add("playerenteredvehicle","",function(ply,veh)
-    if mycar and mycar.chair == veh then
+    if mycar.chair == veh then
         mycar:setDriver(ply)
         xinput.setListeners(ply, "sThumbLX bRightTrigger bLeftTrigger", true)
     end
 end)
 
 hook.add("playerleavevehicle","",function(ply,veh)
-    if mycar and mycar.chair == veh then
+    if mycar.chair == veh then
         mycar:setDriver(nil)
         xinput.setListeners(ply, "sThumbLX bRightTrigger bLeftTrigger", false)
     end
 end)
 
 hook.add("xinput","",function(ply, data)
-    if mycar and mycar.driver == ply then
+    if mycar.driver == ply then
         mycar.joystickSteer = data.sThumbLX/32768
         mycar.joystickThrottle = data.bRightTrigger/255 - data.bLeftTrigger/255
     else
         xinput.setListeners(ply, "sThumbLX bRightTrigger bLeftTrigger", false)
     end
 end)
+
+hook.add("clientinitialized","",function(ply)
+    net.start("car")
+    net.writeEntity(mycar.body)
+    net.send(ply)
+end)
+
+else -- CLIENT
+
+local carent
+net.receive("car",function()
+    net.readEntity(function(ent) carent = ent end)
+end)
+
+local font = render.createFont("Roboto",32)
+local font2 = render.createFont("Roboto",128)
+local carvel = 0
+hook.add("render","",function()
+    if not (carent and carent:isValid()) then return end
+    local forward = carent:localToWorld(carForward) - carent:getPos()
+    carvel = carvel*0.95 + carent:getVelocity():dot(forward)*0.05*0.0568182
+    local bearing = math.atan2(forward[1], forward[2])
+
+    
+    render.setFont(font2)
+    render.drawText(256, 256, string.format("%03.0f", math.abs(carvel)), 1)
+    render.setFont(font)
+    render.drawText(370, 320, "mph", 1)
+    local S1, S2
+    if bearing < -math.pi/2 then
+        bearing = bearing + math.pi
+        S1, S2 = "W", "S"
+    elseif bearing<0 then
+        bearing = bearing + math.pi/2
+        S1, S2 = "N", "W"
+    elseif bearing<math.pi/2 then
+        S1, S2 = "E", "N"
+    else
+        S1, S2 = "S", "E"
+        bearing = bearing - math.pi/2
+    end
+    local compassMatrix = Matrix() compassMatrix:setTranslation(Vector(256, 0, 0))
+    render.pushMatrix(compassMatrix)
+    do
+        local x = 100*math.cos(bearing)
+        local y = 50*math.sin(bearing)
+        render.drawText(x*1.2, y*1.2, S1, 1)
+        local tx, ty = -y*0.05, x*0.05
+        render.drawPoly({{x = -tx, y = -ty},{x = x, y = y},{x = tx, y = ty}})
+    end
+    do
+        local x = 100*math.cos(bearing+math.pi/2)
+        local y = 50*math.sin(bearing+math.pi/2)
+        render.drawText(x*1.2, y*1.2, S2, 1)
+        local tx, ty = -y*0.05, x*0.05
+        render.drawPoly({{x = -tx, y = -ty},{x = x, y = y},{x = tx, y = ty}})
+    end
+    render.popMatrix()
+
+end)
+
+end
 
