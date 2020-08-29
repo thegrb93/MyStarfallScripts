@@ -238,7 +238,7 @@ hook.add("render","",function()
     render.setFont(font2)
     render.drawText(256, 256, string.format("%03.0f", math.abs(carvel)), 1)
     render.setFont(font)
-    render.drawText(370, 320, "mph", 1)
+    render.drawText(380, 320, "mph", 1)
     local S1, S2
     if bearing < -math.pi/2 then
         bearing = bearing + math.pi
@@ -252,19 +252,19 @@ hook.add("render","",function()
         S1, S2 = "S", "E"
         bearing = bearing - math.pi/2
     end
-    local compassMatrix = Matrix() compassMatrix:setTranslation(Vector(256, 0, 0))
+    local compassMatrix = Matrix() compassMatrix:setTranslation(Vector(256, 512, 0))
     render.pushMatrix(compassMatrix)
     do
         local x = 100*math.cos(bearing)
-        local y = 50*math.sin(bearing)
-        render.drawText(x*1.2, y*1.2, S1, 1)
+        local y = -50*math.sin(bearing)
+        render.drawText(x*1.2, y*1.2-20, S1, 1)
         local tx, ty = -y*0.05, x*0.05
         render.drawPoly({{x = -tx, y = -ty},{x = x, y = y},{x = tx, y = ty}})
     end
     do
         local x = 100*math.cos(bearing+math.pi/2)
-        local y = 50*math.sin(bearing+math.pi/2)
-        render.drawText(x*1.2, y*1.2, S2, 1)
+        local y = -50*math.sin(bearing+math.pi/2)
+        render.drawText(x*1.2, y*1.2-20, S2, 1)
         local tx, ty = -y*0.05, x*0.05
         render.drawPoly({{x = -tx, y = -ty},{x = x, y = y},{x = tx, y = ty}})
     end
