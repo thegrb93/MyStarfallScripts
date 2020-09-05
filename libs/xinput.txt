@@ -23,10 +23,6 @@ function listener:update(state)
     return false
 end
 
-function axislistener:initialize(index)
-    listener.initialize(self, index)
-end
-
 function axislistener:send()
     net.writeInt(self.data, 16)
 end
@@ -35,20 +31,12 @@ function axislistener:recv()
     return net.readInt(16)
 end
 
-function triggerlistener:initialize(index)
-    listener.initialize(self, index)
-end
-
 function triggerlistener:send()
     net.writeUInt(self.data, 8)
 end
 
 function triggerlistener:recv()
     return net.readUInt(8)
-end
-
-function buttonlistener:initialize(index)
-    listener.initialize(self, index)
 end
 
 function buttonlistener:send()
@@ -123,6 +111,7 @@ elseif xinput then
     
     function xinput.think()
         local state = xinput.getState(0)
+        if not state then return end
         local updateCount = 0
         local updates = {}
         for v in pairs(enabledListeners) do
