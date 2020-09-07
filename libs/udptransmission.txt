@@ -1,0 +1,72 @@
+--@name UdpTransmission
+--@author Sparky
+--@shared
+
+local transmitter = class("transmitter")
+
+local transmitters = {}
+if SERVER then
+
+function transmitter:initialize(port, onrecv)
+    transmitters[port] = self
+    self.initialized = false
+    self.port = port
+    self.onrecv = onrecv
+end
+
+function transmitter:send(data)
+    net.start("udpdata")
+    net.writeUInt(self.port, 16)
+    net.writeUInt(#data, 32)
+    net.writeData(data, #data)
+    net.send(owner(), true)
+end
+
+net.receive("udpdata",function()
+    local t = transmitters[net.readUInt(16)]
+    t.onrecv(net.readData(net.readUInt(32)))
+end)
+
+return transmitter
+
+elseif player()==owner() then
+
+function transmitter:initialize(port)
+    self.port = port
+    self.socket = socket.udp()
+    self.socket:settimeout(0)
+    self.socket:setpeername("127.0.0.1", port)
+    hook.add("removed",tostring(self.socket),function()
+        self.socket:close()
+    end)
+    hook.add("think",tostring(self.socket),function()
+        self:receive()
+    end)
+end
+
+function transmitter:send(data)
+    return self.socket:send(data)
+end
+
+function transmitter:receive()
+    local data = self.socket:receive()
+    if data then
+        net.start("udpdata")
+        net.writeUInt(self.port,16)
+        net.writeUInt(#data, 32)
+        net.writeData(data, #data)
+        net.send(nil, true)
+    end
+end
+
+net.receive("udpdata",function()
+    local port = net.readUInt(16)
+    local transmit = transmitters[port]
+    if not transmit then
+        transmit = transmitter:new(port)
+        transmitters[port] = transmit
+    end
+    transmit:send(net.readData(net.readUInt(32)))
+end)
+
+end
