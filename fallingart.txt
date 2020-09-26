@@ -1,0 +1,60 @@
+--@name fallingArt
+--@author Sparky
+--@client
+
+local function fitAspect(mat,url,w,h,resize)
+    if w>h then h = h*1024/w w = 1024
+    else w = w*1024/h h = 1024 end
+    resize(512 - w/2, 512 - h/2, w, h)
+end
+
+local m = material.create("VertexLitGeneric")
+m:setTextureURL("$basetexture","https://dl.dropboxusercontent.com/s/4ptiqyqh9lq8e1f/birb.png", fitAspect)
+local mypos = player():getPos()
+local dt = timer.frametime()
+local mat = Matrix()
+local drop = class("drop")
+
+function drop:initialize()
+    self:randomPos()
+    self.holo = holograms.create(Vector(),Angle(),"models/holograms/plane.mdl")
+    self.holo:setScale(Vector(50))
+    self.holo:setMaterial("!"..m:getName())
+    self.holo:setColor(Color(255,255,255,254))
+    self.holo:suppressEngineLighting(true)
+end
+
+function drop:think()
+    local m = mat:clone()
+    m:rotate(Angle(0,self.angvel*dt,0))
+    m:translate(-mypos)
+
+    self.vel = self.vel + Vector(0,0,-400*dt)
+    self.pos = m * (self.pos + self.vel * dt)
+    local diffpos = mypos - self.pos
+    if diffpos[3] > 500 then
+        self:randomPos()
+    end
+    self.holo:setPos(self.pos)
+    self.holo:setAngles(Angle(90,math.deg(math.atan2(diffpos[2],diffpos[1])),0))
+end
+
+function drop:randomPos()
+    local theta = math.random()*math.pi*2
+    self.pos = mypos + Vector(math.cos(theta)*3000, math.sin(theta)*3000, 1000+math.random()*3000)
+    self.vel = Vector()
+    self.angvel = math.random()*80-40
+end
+
+local drops = {}
+hook.add("think","",function()
+    mypos = player():getPos()
+    dt = timer.frametime()
+    mat:setTranslation(mypos)
+    if quotaAverage()<quotaMax()*0.1 and holograms.hologramsLeft()>0 then
+        drops[#drops+1] = drop:new()
+    end
+    for i=1, #drops do
+        drops[i]:think()
+    end
+end)
