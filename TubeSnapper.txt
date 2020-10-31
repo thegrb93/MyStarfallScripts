@@ -1,0 +1,73 @@
+--@name TubeSnapper
+--@author Sparky
+--@server
+
+-- Place the chip on the first tube and then sequentially connect them.
+-- If you make a mistake, make sure to remove the chip first, remove the mistake, and then place the chip on the prop before your mistake.
+
+
+local function isTube(e)
+    return string.match(e:getModel(), "models/hunter/tubes/tube")
+end
+local function isBend(e)
+    return e:getModel() == "models/hunter/tubes/tubebend4x4x90.mdl"
+end
+
+local tubeEnd = chip():isWeldedTo()
+
+local collide, collide2
+local function nextTube(e)
+    e:getPhysicsObject():enableMotion(false)
+
+    local dir1, dir2
+    if isBend(tubeEnd) then
+        dir1 = -tubeEnd:getRight()
+    else
+        dir1 = tubeEnd:getUp()
+    end
+    if isBend(e) then
+        dir2 = e:getUp()
+    else
+        dir2 = e:getUp()
+    end
+    local axis = dir1:cross(dir2):getNormalized()
+    if axis[1]~=axis[1] then axis = Vector() end
+    local angleDeg = math.deg(math.acos(math.clamp(dir2:dot(dir1), -1, 1)))
+    local ang = e:getAngles()
+    ang = ang:rotateAroundAxis(axis, -angleDeg)
+    e:setAngles(ang)
+    
+    local pos1, pos2
+    if isBend(tubeEnd) then
+        pos1 = tubeEnd:localToWorld(Vector(0.007, 94.893, -0.011))
+    else
+        local mins, maxs = tubeEnd:getPhysicsObject():getAABB()
+        pos1 = tubeEnd:localToWorld(Vector(0,0,maxs[3]))
+    end
+    if isBend(e) then
+        pos2 = e:localToWorld(Vector(0.001, -0.015, -94.903))
+    else
+        local mins, maxs = e:getPhysicsObject():getAABB()
+        pos2 = e:localToWorld(Vector(0,0,mins[3]))
+    end
+    e:setPos(e:getPos() + (pos1 - pos2))
+    
+    tubeEnd:removeCollisionListener()
+    tubeEnd = e
+    tubeEnd:addCollisionListener(collide)
+end
+
+local nextcollide = 0
+function collide(t)
+    if timer.curtime()<nextcollide then return end
+    nextcollide = timer.curtime()+0.1
+    local e = t.HitEntity
+    if isTube(e) or isBend(e) then
+        nextTube(e)
+    end
+end
+
+tubeEnd:addCollisionListener(collide)
+hook.add("remove","",function()
+    tubeEnd:removeCollisionListener()
+end)
