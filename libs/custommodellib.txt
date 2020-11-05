@@ -1,0 +1,259 @@
+--@name CustomModelLib
+--@author Sparky
+--@shared
+
+-- EXAMPLE
+
+-- local customModel = require("libs/custommodellib.txt")
+
+-- local mat
+-- if CLIENT then
+--     mat = material.create("VertexLitGeneric")
+--     mat:setInt("$flags",138414080)
+--     mat:setTextureURL("$basetexture", "https://dl.dropboxusercontent.com/s/tj6h9xc3mfe6o7w/sfmodel.jpg",function(_,_,_,_,cb) cb(0,0,1024,1024) end)
+
+-- end
+
+-- customModel.register("cylinder","https://dl.dropboxusercontent.com/s/b0yrw0scmlcgkak/sfmodel.obj", "https://dl.dropboxusercontent.com/s/b0yrw0scmlcgkak/sfmodel.obj", "flesh", {Cylinder=mat})
+
+-- if SERVER then
+--     customModel.spawn("cylinder",chip():getPos()+Vector(0,0,150),chip():getAngles(),function(e)
+--         e:setMass(1000)
+--     end)
+-- end
+
+
+local customModels = {}
+local customModel = {}
+
+local workers = {}
+local function execWorker(worker)
+    local status
+    while quotaAverage()<quotaMax()*0.4 do
+        status = worker()
+        if status==1 or status==2 then
+            break
+        end
+    end
+    return status
+end
+local function procWorkers()
+    local i = 1
+    while i <= #workers do
+        local status = execWorker(workers[i])
+        if status==2 then
+            table.remove(workers, i)
+        elseif status==1 then
+            i = i + 1
+        else
+            break
+        end
+    end
+    if #workers==0 then hook.remove("think","custommodel") end
+end
+local function addWorker(worker)
+    local status = execWorker(worker)
+    if status~=2 then
+        if #workers == 0 then hook.add("think", "custommodel", procWorkers) end
+        workers[#workers+1] = worker
+    end
+end
+
+if SERVER then
+    local function downloadPhys(model, url)
+        addWorker(coroutine.wrap(function()
+
+            while not http.canRequest() do coroutine.yield(1) end
+
+            local data
+            http.get(url, function(data_)
+                data = data_
+            end, error)
+            
+            while not data do coroutine.yield(1) end
+            
+            local meshes, meshdata = mesh.parseObj(data, true)
+            local physMeshes = {}
+            for k, v in pairs(meshdata.faces) do
+                local vertinds = {}
+                local points = {}
+                for o, p in pairs(v) do
+                    local ind = tonumber(string.match(p,"%d+"))
+                    if not vertinds[ind] then
+                        vertinds[ind] = true
+                        points[#points+1] = meshdata.positions[ind]
+                    end
+                end
+                physMeshes[#physMeshes+1] = points
+            end
+            model.physMesh = physMeshes
+
+            return 2
+        end))
+    end
+    local function downloadMesh(model, url)
+        addWorker(coroutine.wrap(function()
+
+            while not http.canRequest() do coroutine.yield(1) end
+
+            local data
+            http.get(url, function(data_)
+                data = data_
+            end, error)
+            
+            while not data do coroutine.yield(1) end
+            
+            model.meshData = fastlz.compress(data)
+
+            return 2
+        end))
+    end
+
+    function customModel.register(name, meshUrl, physMeshUrl, physMaterial, materials)
+        local model = {name = name, physMaterial = physMaterial}
+        if type(physMeshUrl)=="string" then
+            downloadPhys(model, physMeshUrl)
+        else
+            model.physMesh = physMeshUrl
+        end
+        if string.sub(meshUrl, 1, 4)=="http" then
+            downloadMesh(model, meshUrl)
+        else
+            model.meshData = meshUrl
+        end
+        customModels[name] = model
+    end
+
+    function customModel.spawn(name, pos, ang, frozen, spawncb)
+        local model = customModels[name]
+        if not model then error("Model doesn't exist! " .. name, 2) end
+
+        addWorker(coroutine.wrap(function()
+            while not prop.canSpawn() or model.physMesh==nil do coroutine.yield(1) end
+
+            local e = prop.createCustom(pos, ang, model.physMesh, frozen)
+            e:getPhysicsObject():setMaterial(model.physMaterial)
+            e.customModel = model.name
+            if spawncb then spawncb(e) end
+
+            net.start("customModel")
+            net.writeString(model.name)
+            net.writeEntity(e)
+            net.send()
+            return 2
+        end))
+    end
+    
+    net.receive("requestMesh", function(_, pl)
+        local name = net.readString()
+        local model = customModels[name]
+        if not model then error("Model doesn't exist! " .. name, 2) end
+
+        addWorker(coroutine.wrap(function()
+            while model.meshData==nil do coroutine.yield(1) end
+            if not pl:isValid() then return end
+            net.start("requestMesh")
+            net.writeString(model.name)
+            net.writeStream(model.meshData, false)
+            net.send(pl)
+            return 2
+        end))
+    end)
+
+    hook.add("clientinitialized","",function(pl)
+        find.byClass("starfall_prop", function(e)
+            if e.customModel then
+                net.start("customModel")
+                net.writeString(e.customModel)
+                net.writeEntity(e)
+                net.send()
+            end
+        end)
+    end)
+
+else
+    local requested = false
+    local function downloadMesh(model)
+        addWorker(coroutine.wrap(function()
+
+            while requested do coroutine.yield(1) end
+            requested = true
+            net.start("requestMesh")
+            net.writeString(model.name)
+            net.send()
+
+            while model.meshData==nil do coroutine.yield(1) end
+            requested = false
+            model.meshes = mesh.createFromObj(model.meshData, true)
+            model.meshData = nil
+
+            return 2
+        end))
+    end
+
+    function customModel.register(name, meshUrl, physMeshUrl, physMaterial, materials)
+        local model = {name = name, physMaterial = physMaterial, materials = materials}
+        downloadMesh(model)
+        customModels[name] = model
+    end
+
+    net.receive("requestMesh", function()
+        local name = net.readString()
+        local model = customModels[name]
+        if not model then error("Model doesn't exist! " .. name, 2) end
+
+        net.readStream(function(data)
+            if not data then error("Error downloading data!") end
+            data = fastlz.decompress(data)
+            if not data then error("Data was corrupted!") end
+            model.meshData = data
+        end)
+    end)
+
+    -- Delete child when parent is removed
+    local function deleteOnRemove(parent, child)
+        local n = "deleteOnRemove"..parent:entIndex()..","..child:entIndex()
+        hook.add("entityremoved",n,function(e)
+            timer.simple(0, function()
+                if not parent:isValid() then
+                    if child:isValid() then child:remove() end
+                    hook.remove("entityremoved",n)
+                end
+            end)
+        end)
+    end
+    local function applyMesh(model, e)
+        addWorker(coroutine.wrap(function()
+            while model.meshes == nil do coroutine.yield(1) end
+            local first = true
+            for name, mesh in pairs(model.meshes) do
+                local mat = model.materials[name]
+                if first then
+                    first = false
+                    e:setMesh(mesh)
+                    if mat then e:setMeshMaterial(mat) end
+                    e:getPhysicsObject():setMaterial(model.physMaterial)
+                else
+                    local holo = holograms.create(e:getPos(), e:getAngles(), "")
+                    holo:setMesh(mesh)
+                    if mat then holo:setMeshMaterial(mat) end
+                    holo:setParent(e)
+                    deleteOnRemove(e, holo)
+                end
+            end
+            return 2
+        end))
+    end
+
+    net.receive("customModel",function()
+        local name = net.readString()
+        local model = customModels[name]
+        if not model then error("Model doesn't exist! " .. name, 2) end
+        net.readEntity(function(e)
+            applyMesh(model, e)
+        end)
+    end)
+
+end
+
+return customModel
