@@ -1,0 +1,65 @@
+--@name Door
+--@author Sparky
+--@server
+--@include libs/criticalpd.txt
+
+local pd = require("libs/criticalpd.txt")
+local door = class("door")
+
+function door:initialize(ent)
+    self.ent = ent
+    --ent:makeUsable()
+    self.pd = pd:new(ent, 0, 400)
+    self.open = false
+    self.matrix = self.pd.targetAng
+
+    self.nextToggle = 0
+
+    self.ang = 0
+    self.angVel = math.rad(100) -- 100 deg/sec
+    self.angOpen = math.rad(100) -- 100 deg
+
+    self.up = (ent:getMassCenterW() - chip():getPos()):cross(chip():getUp())
+    self.up = Vector(0,0,math.sign(self.up[3]))
+
+    hook.add("playeruse","door",function(pl,used)
+        if used == ent then
+            self:toggle()
+        end
+    end)
+end
+
+function door:toggle()
+    if timer.curtime() < self.nextToggle then return end
+    self.nextToggle = timer.curtime() + 0.5
+    self.ent:emitSound("doors/door1_move.wav")
+    self.open = not self.open
+    self.shutsound = false
+    self.pd.phys:enableMotion(true)
+    chip():enableMotion(true)
+    hook.add("think","door",function() self:simulate() end)
+end
+
+function door:simulate()
+    local angVel = (self.open and self.angVel or -self.angVel)
+    self.ang = math.clamp(self.ang + angVel*timer.frametime(), 0, self.angOpen)
+
+    if self.ang == self.angOpen or self.ang == 0 then
+        self.pd.targetAngVel = Vector()
+        if self.ang == 0 and not self.shutsound then self.shutsound = true self.ent:emitSound("doors/door1_stop.wav") end
+        if self.pd.angError:getLengthSqr()<0.005 then
+            self.pd.phys:enableMotion(false)
+            chip():enableMotion(false)
+            hook.remove("think","door")
+            return
+        end
+    else
+        self.pd.targetAngVel = self.up * math.deg(angVel)
+    end
+    local m = Matrix()
+    m:setAxisAngle(self.up, self.ang)
+    self.pd.targetAng = self.matrix * m
+    self.pd:simulateAngForce()
+end
+
+door:new(chip():isWeldedTo())
