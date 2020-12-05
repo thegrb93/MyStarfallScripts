@@ -1,0 +1,66 @@
+--@name Spray
+--@author Sparky
+--@shared
+
+local sprayUrl = "https://dl.dropboxusercontent.com/s/3hbtg2lt7sc1qxq/dove.png"
+
+local sprayHolo
+if SERVER then
+    sprayHolo = holograms.create(Vector(), Angle(), "models/holograms/plane.mdl", Vector(5))
+    sprayHolo:setColor(Color(255,255,255,254))
+    sprayHolo:suppressEngineLighting(true)
+    
+    net.receive("spray",function()
+        local orientation = net.readMatrix()
+        sprayHolo:setPos(orientation:getTranslation())
+        sprayHolo:setAngles(orientation:getAngles())
+        sprayHolo:setNoDraw(false)
+        sprayHolo:emitSound("player/sprayer.wav")
+    end)
+    
+    net.receive("getholo",function(len,pl)
+        net.start("holo") net.writeEntity(sprayHolo) net.send(pl)
+    end)
+    
+else
+
+    if player()==owner() then
+        hook.add("inputPressed","",function(key)
+            if key==30 then
+                local tr = owner():getEyeTrace()
+                local pos = tr.HitPos
+                local normal = tr.HitNormal
+                local up
+                if normal==Vector(0,0,1) then
+                    up = Vector(0,1,0)
+                else
+                    up = (Vector(0,0,1) - normal*normal[3]):getNormalized()
+                end
+                local mat = Matrix()
+                mat:setForward(-up)
+                mat:setRight(up:cross(normal))
+                mat:setUp(normal)
+                mat:setTranslation(pos+normal)
+
+                net.start("spray")
+                net.writeMatrix(mat)
+                net.send()
+            end
+        end)
+    end
+
+    local sprayMat = material.create("VertexLitGeneric")
+    sprayMat:setTextureURL("$basetexture",sprayUrl)
+
+    net.receive("holo",function()
+        net.readEntity(function(holo)
+            if not holo then net.start("getholo") net.send() return end
+            sprayHolo = holo
+            hook.add("think","",function()
+                pcall(sprayHolo.setMaterial, sprayHolo, "!"..sprayMat:getName())
+            end)
+        end)
+    end)
+    net.start("getholo") net.send()
+
+end
