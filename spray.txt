@@ -2,12 +2,12 @@
 --@author Sparky
 --@shared
 
+-- The spray should be a 1024x1024 image
 local sprayUrl = "https://dl.dropboxusercontent.com/s/3hbtg2lt7sc1qxq/dove.png"
 
 local sprayHolo
 if SERVER then
     sprayHolo = holograms.create(Vector(), Angle(), "models/holograms/plane.mdl", Vector(5))
-    sprayHolo:setColor(Color(255,255,255,254))
     sprayHolo:suppressEngineLighting(true)
     
     net.receive("spray",function()
@@ -50,6 +50,7 @@ else
     end
 
     local sprayMat = material.create("VertexLitGeneric")
+    sprayMat:setInt("$flags", 256)
     sprayMat:setTextureURL("$basetexture",sprayUrl)
 
     net.receive("holo",function()
