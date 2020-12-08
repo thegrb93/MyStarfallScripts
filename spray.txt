@@ -38,7 +38,7 @@ else
                 end
                 local mat = Matrix()
                 mat:setForward(-up)
-                mat:setRight(up:cross(normal))
+                mat:setRight(normal:cross(up))
                 mat:setUp(normal)
                 mat:setTranslation(pos+normal)
 
