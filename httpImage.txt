@@ -1,0 +1,75 @@
+--@name httpImage
+--@author Sparky
+--@shared
+
+-- Place on a screen to show a centered image of your url
+
+--local url = "https://dl.dropboxusercontent.com/s/sot5ft7yjls0wna/blaziken3.png"
+--local url = "https://dl.dropboxusercontent.com/s/xf6iagp8p3ri1wf/blaziken4.png"
+--local url = "https://dl.dropboxusercontent.com/s/zrznbi3u2bwq5u4/birb2.png"
+local url = "https://dl.dropboxusercontent.com/s/dxmm59u9e5tnfix/blaziken2.png"
+
+if SERVER then
+    local e = chip():isWeldedTo()
+    if isValid(e) then
+        e:linkComponent(chip())
+    end
+else
+
+    local centeredImage = class("centeredImage")
+    
+    function centeredImage:initialize(url)
+        self.dx, self.dy, self.dw, self.dy = 0, 0, 0, 0
+        self.mat = material.create("UnlitGeneric")
+        self:loadImage(url)
+    end
+    
+    function centeredImage:loadImage(url)
+        self.mat:setTextureURL("$basetexture", url, function(_,_,w,h,resize)
+            if w then
+                self:layout(w,h,resize)
+            else
+                self:loadImage(url)
+            end
+        end)
+    end
+    
+    function centeredImage:layout(w,h,resize)
+        if w>h then
+            h = h*1024/w
+            w = 1024
+        else
+            w = w*1024/h
+            h = 1024
+        end
+        self.imw = w*0.5
+        self.imh = h*0.5
+        self.aspect = self.imw/self.imh
+        resize(0, 0, w, h)
+        self.loaded = true
+    end
+    
+    function centeredImage:draw()
+        if not self.loaded then return end
+    
+        local scrw, scrh = render.getResolution()
+        local scale, size
+        if scrw/scrh>self.aspect then
+            scale = scrh/self.imh
+            size = scrh*scale
+        else
+            scale = scrw/self.imw
+            size = scrw*scale
+        end
+
+        render.setBackgroundColor(Color(69,75,72,255))
+        render.setColor(Color(255, 255, 255))
+        render.setMaterial(self.mat)
+        render.drawTexturedRect(scrw*0.5-self.imw*0.5*scale, scrh*0.5-self.imh*0.5*scale, size, size)
+    end
+
+    local myimage = centeredImage:new(url)
+    hook.add("render", "", function()
+        myimage:draw()
+    end)
+end
