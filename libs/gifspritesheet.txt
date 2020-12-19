@@ -2,58 +2,31 @@
 --@author Sparky
 --@client
 
-
 -- Example
 
--- if SERVER then
-
-    -- local players = {}
-    -- hook.add("clientinitialized","",function(pl) players[#players+1] = pl end)
-    -- net.receive("data",function()
-        -- net.readStream(function(data)
-            -- local i = 1 while i <= #players do if not players[i]:isValid() then table.remove(players, i) else i = i + 1 end end
-            -- net.start("data") net.writeStream(data) net.send(players)
-            -- hook.add("clientinitialized","",function(pl)
-                -- net.start("data") net.writeStream(data) net.send(pl)
-            -- end)
-        -- end)
-    -- end)
-
--- else
-
--- if player()==owner() then
-    -- http.get("https://static1.e621.net/data/2b/ef/2bef1255f749d40e2b9688a970eb4eb1.gif",function(data)
-        -- net.start("data") net.writeStream(data) net.send()
-    -- end, error)
--- end
-
 -- local gifToSpritesheet = require("libs/gifspritesheet.txt")
--- net.receive("data",function()
-    -- net.readStream(function(data)
-        -- gifToSpritesheet(data, 16, function(spritesheet)
-            -- local w, h = spritesheet.framew, spritesheet.frameh
-            -- hook.add("render","",function()
-                -- local sw, sh = render.getResolution()
-                -- local scale
-                -- if sw*h>sh*w then
-                    -- scale = sw / w
-                -- else
-                    -- scale = sh / h
-                -- end
-                -- local w, h = w*scale, h*scale
-                -- spritesheet:draw(sw*0.5 - w*0.5, sh*0.5 - h*0.5, w, h, timer.frametime())
-            -- end)
+-- http.get("https://static1.e621.net/data/2b/ef/2bef1255f749d40e2b9688a970eb4eb1.gif",function(data)
+    -- gifToSpritesheet(data, 18, function(spritesheet)
+        -- local w, h = spritesheet.framew, spritesheet.frameh
+        -- hook.add("render","",function()
+            -- local sw, sh = render.getResolution()
+            -- local scale
+            -- if sw*h>sh*w then
+                -- scale = sw / w
+            -- else
+                -- scale = sh / h
+            -- end
+            -- local w, h = w*scale, h*scale
+            -- spritesheet:draw(sw*0.5 - w*0.5, sh*0.5 - h*0.5, w, h, timer.frametime())
         -- end)
     -- end)
 -- end)
-
--- end
 
 
 local workers = {}
 local function execWorker(worker)
     local status
-    while quotaUsed()<quotaMax()*0.4 do
+    while quotaAverage()<quotaMax()*0.4 do
         status = worker()
         if status=="wait" or status=="done" then
             break
@@ -127,7 +100,12 @@ gifdecoder.drawMaterial = material.create("UnlitGeneric")
 gifdecoder.drawMaterial:setTextureRenderTarget("$basetexture", "gif")
 
 function gifdecoder:initialize(data)
-    local ss = bit.stringstream(data)
+    local ss = bit.stringstream()
+    for i=1, #data, 1000 do
+        ss:write(string.sub(data, i, math.min(i+1000-1, #data)))
+        coroutine.yield()
+    end
+    ss:seek(1)
     local header = ss:read(13)
     local headerss = bit.stringstream(header)
     local fdsz = string.byte(header, 11, 11)
