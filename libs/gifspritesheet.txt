@@ -1,0 +1,290 @@
+--@name GifSpritesheet
+--@author Sparky
+--@client
+
+
+-- Example
+
+-- if SERVER then
+
+    -- local players = {}
+    -- hook.add("clientinitialized","",function(pl) players[#players+1] = pl end)
+    -- net.receive("data",function()
+        -- net.readStream(function(data)
+            -- local i = 1 while i <= #players do if not players[i]:isValid() then table.remove(players, i) else i = i + 1 end end
+            -- net.start("data") net.writeStream(data) net.send(players)
+            -- hook.add("clientinitialized","",function(pl)
+                -- net.start("data") net.writeStream(data) net.send(pl)
+            -- end)
+        -- end)
+    -- end)
+
+-- else
+
+-- if player()==owner() then
+    -- http.get("https://static1.e621.net/data/2b/ef/2bef1255f749d40e2b9688a970eb4eb1.gif",function(data)
+        -- net.start("data") net.writeStream(data) net.send()
+    -- end, error)
+-- end
+
+-- local gifToSpritesheet = require("libs/gifspritesheet.txt")
+-- net.receive("data",function()
+    -- net.readStream(function(data)
+        -- gifToSpritesheet(data, 16, function(spritesheet)
+            -- local w, h = spritesheet.framew, spritesheet.frameh
+            -- hook.add("render","",function()
+                -- local sw, sh = render.getResolution()
+                -- local scale
+                -- if sw*h>sh*w then
+                    -- scale = sw / w
+                -- else
+                    -- scale = sh / h
+                -- end
+                -- local w, h = w*scale, h*scale
+                -- spritesheet:draw(sw*0.5 - w*0.5, sh*0.5 - h*0.5, w, h, timer.frametime())
+            -- end)
+        -- end)
+    -- end)
+-- end)
+
+-- end
+
+
+local workers = {}
+local function execWorker(worker)
+    local status
+    while quotaUsed()<quotaMax()*0.4 do
+        status = worker()
+        if status=="wait" or status=="done" then
+            break
+        end
+    end
+    return status
+end
+local function procWorkers()
+    local i = 1
+    while i <= #workers do
+        local status = execWorker(workers[i])
+        if status=="done" then
+            table.remove(workers, i)
+        elseif status=="wait" then
+            i = i + 1
+        else
+            break
+        end
+    end
+    if #workers==0 then hook.remove("think","gifworkers") end
+end
+local function addWorker(worker)
+    worker = coroutine.wrap(worker)
+    local status = execWorker(worker)
+    if status~="done" then
+        if #workers == 0 then hook.add("think", "gifworkers", procWorkers) end
+        workers[#workers+1] = worker
+    end
+end
+
+-------------------------------------------------
+
+local gifdecoder = class("gifdecode")
+local spritesheet = class("spritesheet")
+
+local function ignoreBlock(ss)
+    local size = ss:readUInt8()
+    while size>0 and ss:tell() <= ss:size() do
+        ss:skip(size)
+        size = ss:readUInt8()
+        coroutine.yield()
+    end
+end
+
+local function readImg(ss, data)
+    local header = ss:read(10)
+    local lctflag = string.byte(header, 9, 9)
+    data[#data+1] = header
+    if bit.band(lctflag, 0x80) ~= 0 then
+        local lctsize = bit.lshift(1, bit.band(lctflag, 7) + 1)
+        data[#data+1] = ss:read(3 * lctsize)
+    end
+
+    local size = ss:readUInt8()
+    while size>0 and ss:tell() <= ss:size() do
+        data[#data+1] = string.char(size)
+        data[#data+1] = ss:read(size)
+        size = ss:readUInt8()
+        coroutine.yield()
+    end
+    data[#data+1] = '\x00'
+end
+
+local function imgStruct(header)
+    return {data = {header}, disposal = 0, delay = 0, transparency = false, transparencyi = 0}
+end
+
+render.createRenderTarget("gif")
+render.createRenderTarget("gifcanvas")
+gifdecoder.drawMaterial = material.create("UnlitGeneric")
+gifdecoder.drawMaterial:setTextureRenderTarget("$basetexture", "gif")
+
+function gifdecoder:initialize(data)
+    local ss = bit.stringstream(data)
+    local header = ss:read(13)
+    local headerss = bit.stringstream(header)
+    local fdsz = string.byte(header, 11, 11)
+    if bit.band(fdsz, 0x80) ~= 0 then
+        header = header .. ss:read(256 * 3)
+    end
+    headerss:skip(6)
+    self.w = headerss:readUInt16()
+    self.h = headerss:readUInt16()
+    local maxs = math.max(self.w, self.h)
+    if maxs>1022 then
+        local scale = 1022 / maxs
+        self.w = self.w * scale
+        self.h = self.h * scale
+    end
+
+    local imgs = {}
+    local curimg = imgStruct(header)
+    while ss:tell() <= ss:size() do
+        local com = ss:readUInt8()
+        if com == 0x21 then -- Extension control
+            local t = ss:readUInt8()
+            if t==0xF9 then -- Extension type
+                ss:skip(1)
+                local info = ss:read(4)
+                ss:skip(1)
+                curimg.data[#curimg.data + 1] = '\x21\xF9\x04' .. info .. '\x00'
+
+                local infoss = bit.stringstream(info)
+                local rdit = infoss:readUInt8()
+                curimg.delay = infoss:readUInt16()/100
+                curimg.transparencyi = infoss:readUInt8()
+                curimg.disposal = bit.band(bit.rshift(rdit, 2), 3)
+                curimg.transparency = bit.band(rdit, 1)
+            else
+                ignoreBlock(ss)
+            end
+        elseif com == 0x2C then -- Image
+            curimg.data[#curimg.data + 1] = '\x2C'
+            readImg(ss, curimg.data)
+            curimg.data[#curimg.data + 1] = '\x3B'
+            curimg.data = "data:image/gif;base64," ..http.base64Encode(table.concat(curimg.data))
+            imgs[#imgs+1] = curimg
+            curimg = imgStruct(header)
+        elseif com == 0x3B then break end -- File terminator
+        coroutine.yield()
+    end
+    self.imgs = imgs
+end
+
+function gifdecoder:createSpriteSheet(maxRTs, doneCb)
+    local spritesheet = spritesheet:new(maxRTs, self.w, self.h, #self.imgs)
+    local totaldelay = 0
+    for i, img in ipairs(self.imgs) do
+        local frame = spritesheet.frames[i]
+        frame.delay = img.delay
+        totaldelay = totaldelay + img.delay
+        self:renderImg(img, frame, i)
+    end
+    spritesheet.totaldelay = totaldelay
+    return spritesheet
+end
+
+function gifdecoder:renderImg(img, frame, i)
+    local done = false
+    gifdecoder.drawMaterial:setTextureURL("$basetexture", img.data, function(_,_,_,_,layout)
+        if layout==nil then error("Failed to decode gif") end
+        layout(1, 1, self.w, self.h)
+    end, function() done = true end)
+    while not done do coroutine.yield("wait") end
+
+    done = false
+    hook.add("renderoffscreen","gifspritesheet",function()
+        render.selectRenderTarget("gifcanvas")
+        if first then render.clear(Color(0,0,0,0),true) end
+        render.setMaterial(gifdecoder.drawMaterial)
+        render.drawTexturedRectUV(1, 1, self.w, self.h, 1/1024, 1/1024, (1+self.w)/1024, (1+self.h)/1024)
+        
+        render.selectRenderTarget(frame.rt)
+        render.setRenderTargetTexture("gifcanvas")
+        render.drawTexturedRectUV(frame.x, frame.y, frame.w, frame.h, 1/1024, 1/1024, (1+self.w)/1024, (1+self.h)/1024)
+        if img.disposal==2 then render.selectRenderTarget("gifcanvas") render.clear(Color(0,0,0,0),true) end
+        
+        done = true
+        hook.remove("renderoffscreen","gifspritesheet")
+    end)
+
+    while not done do coroutine.yield("wait") end
+end
+
+-------------------------------------------------
+
+local rtIndex = 0
+function spritesheet:initialize(maxRTs, w, h, nframes)
+    self.t = 0
+    self.frames = {}
+    self.framew = w
+    self.frameh = h
+    self.framei = 1
+    for _, scale in ipairs{1, 0.75, 0.5, 0.25, 0.125, 0.0625} do
+        local w = w*scale
+        local h = h*scale
+        if w>1022 or h>1022 then continue end
+        local nx = math.floor(1023 / (w+1))
+        local ny = math.floor(1023 / (h+1))
+        if nx*ny*maxRTs < nframes then continue end
+        local nrt = math.ceil(nframes / (nx*ny))
+        -- Found a size that fits
+        self.framew = w
+        self.frameh = h
+        for i=1, nrt do
+            local rt = "gifrt"..rtIndex
+            render.createRenderTarget(rt)
+            rtIndex = rtIndex + 1
+            for x=1, nx*(w+1), (w+1) do
+                for y=1, ny*(h+1), (h+1) do
+                    self.frames[#self.frames+1] = {rt = rt, x = x, y = y, w = w, h = h, u1 = x/1024, v1 = y/1024, u2 = (x+w)/1024, v2 = (y+h)/1024}
+                    if #self.frames == nframes then --[[printTable(self.frames)]] return end
+                end
+            end
+        end
+    end
+    error("Failed to fit the gif into " .. maxRTs .. " rendertargets.")
+end
+
+function spritesheet:draw(x, y, w, h, dt)
+    self.t = self.t + (dt % self.totaldelay)
+    local frame = self.frames[self.framei]
+    while self.t > frame.delay do
+        self.t = self.t - frame.delay
+        self.framei = (self.framei % #self.frames) + 1
+        frame = self.frames[self.framei]
+    end
+    render.setRenderTargetTexture(frame.rt)
+    render.drawTexturedRectUV(x, y, w, h, frame.u1, frame.v1, frame.u2, frame.v2)
+end
+
+-------------------------------------------------
+
+local queue = {}
+local function gifToSpritesheet(data, maxRTs, doneCb)
+    local worker = function()
+        --[[while not http.canRequest() do coroutine.yield("wait") end
+
+        local data
+        http.get("http://dl.dropboxusercontent.com/s/n1tezz2703mgaog/glaceon.gif", function(data_)
+            data = data_
+        end, error)
+        while not data do coroutine.yield("wait") end]]
+
+        local decoder = gifdecoder:new(data)
+        doneCb(decoder:createSpriteSheet(maxRTs))
+        if #queue>0 then addWorker(table.remove(queue, 1)) end
+
+        return "done"
+    end
+    if #workers>0 then queue[#queue+1] = worker else addWorker(worker) end
+end
+
+return gifToSpritesheet
