@@ -11,7 +11,7 @@
         -- hook.add("render","",function()
             -- local sw, sh = render.getResolution()
             -- local scale
-            -- if sw*h>sh*w then
+            -- if sw*h<sh*w then
                 -- scale = sw / w
             -- else
                 -- scale = sh / h
