@@ -106,12 +106,15 @@ function gifdecoder:initialize(data)
         coroutine.yield()
     end
     ss:seek(1)
+
     local header = ss:read(13)
-    local headerss = bit.stringstream(header)
     local fdsz = string.byte(header, 11, 11)
     if bit.band(fdsz, 0x80) ~= 0 then
-        header = header .. ss:read(256 * 3)
+        local gtcsize = bit.lshift(1, bit.band(fdsz, 0x07) + 1)
+        header = header .. ss:read(gtcsize * 3)
     end
+
+    local headerss = bit.stringstream(header)
     headerss:skip(6)
     self.w = headerss:readUInt16()
     self.h = headerss:readUInt16()
