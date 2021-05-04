@@ -2,15 +2,31 @@
 --@author Sparky
 --@server
 
--- Place the chip on the first tube and then sequentially connect them.
--- If you make a mistake, make sure to remove the chip first, remove the mistake, and then place the chip on the prop before your mistake.
-
-
 local function isTube(e)
     return string.match(e:getModel(), "models/hunter/tubes/tube")
 end
 local function isBend(e)
     return e:getModel() == "models/hunter/tubes/tubebend4x4x90.mdl"
+end
+local function getM(e1, e2)
+    local m1, m2
+    if isBend(e1) then
+        m1 = e1:getMatrix()
+        m1:rotate(Angle(0,0,-90))
+    else
+        m1 = e1:getMatrix()
+    end
+    m2 = e2:getMatrix()
+    return m1, m2
+end
+
+local function angleDiff(axis, vec1, vec2)
+    local D = math.asin(math.clamp(axis.x*(vec1.y*vec2.z - vec1.z*vec2.y) + axis.y*(vec1.z*vec2.x - vec1.x*vec2.z) + axis.z*(vec1.x*vec2.y - vec1.y*vec2.x),-1,1))
+    if vec1:dot(vec2)>0 then
+        return D
+    else
+        if D>0 then return math.pi-D else return -math.pi-D end
+    end
 end
 
 local tubeEnd = chip():isWeldedTo()
@@ -19,23 +35,28 @@ local collide, collide2
 local function nextTube(e)
     e:getPhysicsObject():enableMotion(false)
 
-    local dir1, dir2
-    if isBend(tubeEnd) then
-        dir1 = -tubeEnd:getRight()
-    else
-        dir1 = tubeEnd:getUp()
-    end
-    if isBend(e) then
-        dir2 = e:getUp()
-    else
-        dir2 = e:getUp()
-    end
-    local axis = dir1:cross(dir2):getNormalized()
-    if axis[1]~=axis[1] then axis = Vector() end
-    local angleDeg = math.deg(math.acos(math.clamp(dir2:dot(dir1), -1, 1)))
-    local ang = e:getAngles()
-    ang = ang:rotateAroundAxis(axis, -angleDeg)
-    e:setAngles(ang)
+    local m1, m2 = getM(tubeEnd, e)
+    local dir1, dir2 = m1:getUp(), m2:getUp()
+    local axis, mag
+
+    axis = dir2:cross(dir1):getNormalized()
+    if axis[1]~=axis[1] then return end
+    mag = math.acos(math.clamp(dir2:dot(dir1), -1, 1))
+
+    local rot = Matrix()
+    rot:setAxisAngle(axis, mag)
+    m2 = rot * m2
+
+    mag = angleDiff(dir1, m1:getForward(), m2:getForward())
+    local snap = math.pi/8
+    axis = dir1
+    mag = math.round(mag/snap)*snap - mag
+    
+    rot = Matrix()
+    rot:setAxisAngle(axis, mag)
+    m2 = rot * m2
+
+    e:setAngles(m2:getAngles())
     
     local pos1, pos2
     if isBend(tubeEnd) then
