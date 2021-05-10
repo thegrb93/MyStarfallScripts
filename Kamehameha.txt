@@ -19,7 +19,7 @@ function kamehameha:setEnabled(enabled)
 
     net.start("kamehame")
     net.writeBool(enabled)
-    net.send(pl)
+    net.send()
 
     if enabled then
         hook.add("think","",function()
