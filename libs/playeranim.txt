@@ -1,0 +1,176 @@
+--@name PlayerAnim
+--@author Sparky
+--@client
+--@include libs/flux.txt
+
+-- This lib also requires 'flux'. Get it here https://github.com/rxi/flux/blob/master/flux.lua
+
+-- 1. Getting keyframes easily
+--    Use pac3 to pose your playermodel then copy the keyframe text using the following code:
+--    
+--       include libs/playeranim.txt
+--       local playeranim = require("libs/playeranim.txt"):new(owner()):findKeyFrames(true)
+--
+--    Then press sprint+use keys to print the keyframe.
+--
+-- 2. Example usage:
+--    local playeranim = require("libs/playeranim.txt")
+--    local anim = playeranim:new(owner())
+--    local keyframe = {Pos={["ValveBiped.Bip01_Head1"]=Vector(0,0,50)},Ang={}}
+--    anim:animate(keyframe, 1, "sineinout", function()
+--        print("animation done!")
+--    end)
+
+
+local flux = require("libs/flux.txt")
+local animator = class("animator")
+
+local index = 0
+function animator:initialize(owner, onthink)
+    self.owner = owner
+    self.boneStartPositions = {}
+    self.boneEndPositions = {}
+    self.boneDeltaPositions = {}
+    self.boneStartAngles = {}
+    self.boneStartMatrices = {}
+    self.boneEndAngles = {}
+    self.boneDeltaAngles = {}
+
+    self.bonenames = {}
+    for i=0, owner:getBoneCount()-1 do
+        self.bonenames[owner:getBoneName(i)] = i
+    end
+    self.flux = flux.group()
+    self.t = {0}
+    self.index = index
+    index = index + 1
+    self.think = self.staticthink
+    self.onthink = onthink
+    hook.add("hologrammatrix","plyanimate"..self.index,function() self:think() end)
+    --hook.add("think","plyanimate"..self.index,function() self:think() end)
+end
+
+function animator:findKeyFrames(enable)
+    if player()==self.owner then
+        if enable then
+            hook.add("keypress","animkeyframe",function(ply,key)
+                if isFirstTimePredicted() and ply==self.owner and ((key==IN_KEY.USE and ply:keyDown(IN_KEY.SPEED)) or (key==IN_KEY.SPEED and ply:keyDown(IN_KEY.USE))) then
+                    local boneAngs = {}
+                    local bonePos = {}
+                    for i=0, ply:getBoneCount()-1 do
+                        local pos = ply:getManipulateBonePosition(i)
+                        local ang = ply:getManipulateBoneAngles(i)
+                        if pos[1]~=0 or pos[2]~=0 or pos[3]~=0 then
+                            bonePos[#bonePos+1] = string.format("[\"%s\"]=Vector(%.2f,%.2f,%.2f)",ply:getBoneName(i),pos[1],pos[2],pos[3])
+                        end
+                        if ang[1]~=0 or ang[2]~=0 or ang[3]~=0 then
+                            boneAngs[#boneAngs+1] = string.format("[\"%s\"]=Angle(%.2f,%.2f,%.2f)",ply:getBoneName(i),ang[1],ang[2],ang[3])
+                        end
+                    end
+                    print("{Pos={"..table.concat(bonePos,",").."}, Ang={"..table.concat(boneAngs,",").."}}")
+                end
+            end)
+        else
+            hook.remove("keypress","animkeyframe")
+        end
+    end
+end
+
+function animator:onComplete(oncomplete)
+    self.boneStartPositions = {}
+    for bonei, v in pairs(self.boneEndPositions) do
+        if v[1]~=0 or v[2]~=0 or v[3]~=0 then
+            self.boneStartPositions[bonei] = v
+        end
+    end
+    self.boneEndPositions = {}
+    self.boneDeltaPositions = {}
+
+    self.boneStartAngles = {}
+    for bonei, v in pairs(self.boneEndAngles) do
+        if v[1]~=0 or v[2]~=0 or v[3]~=0 then
+            self.boneStartAngles[bonei] = v
+        end
+    end
+    self.boneStartMatrices = {}
+    self.boneEndAngles = {}
+    self.boneDeltaAngles = {}
+    self.tween = nil
+    self.think = self.staticthink
+
+    if oncomplete then
+        local ok, err = pcall(oncomplete)
+        if not ok then print(err) end
+    end
+end
+
+function animator:animate(keyframe, duration, ease, oncomplete)
+    self.boneEndPositions = {}
+    self.boneEndAngles = {}
+
+    for bone, pos in pairs(keyframe.Pos) do
+        local bonei = self.bonenames[bone]
+        if not self.boneStartPositions[bonei] then self.boneStartPositions[bonei] = Vector() end
+        self.boneEndPositions[bonei] = pos
+    end
+    for bonei, pos in pairs(self.boneStartPositions) do
+        if not self.boneEndPositions[bonei] then self.boneEndPositions[bonei] = Vector() end
+        self.boneDeltaPositions[bonei] = self.boneEndPositions[bonei] - self.boneStartPositions[bonei]
+    end
+    for bone, ang in pairs(keyframe.Ang) do
+        local bonei = self.bonenames[bone]
+        if not self.boneStartAngles[bonei] then self.boneStartAngles[bonei] = Angle() end
+        self.boneEndAngles[bonei] = ang
+    end
+    for bonei, ang in pairs(self.boneStartAngles) do
+        if not self.boneEndAngles[bonei] then self.boneEndAngles[bonei] = Angle() end
+        local m, m2 = Matrix(), Matrix()
+        m:setAngles(ang)
+        self.boneStartMatrices[bonei] = m
+
+        m2:setAngles(self.boneEndAngles[bonei])
+        local diff = m2*m:getInverseTR()
+        self.boneDeltaAngles[bonei] = {diff:getAxisAngle()}
+    end
+    
+    if self.tween then self.tween:stop() end
+
+    self.t[1] = 0
+    self.tween = self.flux:to(self.t, duration, {1}):ease(ease):oncomplete(function()
+        self:onComplete(oncomplete)
+    end)
+    self.think = self.tweenthink
+end
+
+function animator:stop()
+    self.tween:stop()
+    self:onComplete()
+end
+
+function animator:staticthink()
+    for k, s in pairs(self.boneStartPositions) do
+        self.owner:manipulateBonePosition(k, s)
+    end
+    for k, s in pairs(self.boneStartAngles) do
+        self.owner:manipulateBoneAngles(k, s)
+    end
+    if self.onthink then self.onthink() end
+end
+
+function animator:tweenthink()
+    self.flux:update(timer.frametime())
+    local t = self.t[1]
+
+    for k, s in pairs(self.boneDeltaPositions) do
+        self.owner:manipulateBonePosition(k, self.boneStartPositions[k] + s*t)
+    end
+    for k, s in pairs(self.boneDeltaAngles) do
+        local rot = Matrix()
+        rot:setAxisAngle(s[1], s[2]*t)
+        rot = rot * self.boneStartMatrices[k]
+        self.owner:manipulateBoneAngles(k, rot:getAngles())
+    end
+    if self.onthink then self.onthink() end
+end
+
+return animator

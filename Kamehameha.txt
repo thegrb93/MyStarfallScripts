@@ -1,0 +1,280 @@
+--@name Kamehameha
+--@author Sparky
+--@shared
+--@include libs/playeranim.txt
+
+local playeranim = require("libs/playeranim.txt")
+
+local kamehameha = class("kamehameha")
+
+if SERVER then
+--- SERVER ---
+
+function kamehameha:initialize(owner)
+    self.owner = owner
+end
+
+function kamehameha:setEnabled(enabled)
+    self.enabled = enabled
+
+    net.start("kamehame")
+    net.writeBool(enabled)
+    net.send(pl)
+
+    if enabled then
+        hook.add("think","",function()
+            if not self.owner:isAlive() then
+                self:setEnabled(false)
+            end
+        end)
+    else
+        hook.remove("think","")
+    end
+end
+
+local mykamehameha = kamehameha:new(owner())
+hook.add("KeyPress","",function(ply, key)
+    if not mykamehameha.enabled and ply==owner() and key==IN_KEY.ATTACK and ply:getActiveWeapon():getClass()=="none" then
+        mykamehameha:setEnabled(true)
+    end
+end)
+hook.add("KeyRelease","",function(ply, key)
+    if mykamehameha.enabled and ply==owner() and key==IN_KEY.ATTACK then
+        mykamehameha:setEnabled(false)
+    end
+end)
+
+else
+--- CLIENT ---
+
+--if player()~=owner() then return end
+local dustmtl = material.load("particle/particle_smokegrenade1")
+--local lightmtl = material.load("effects/flashlight001")
+local lightmtl = material.load("effects/fluttercore_gmod")
+
+local kameanim1 = {Pos={["ValveBiped.Bip01_Pelvis"]=Vector(0.00,0.00,-8.20)}, Ang={["ValveBiped.Bip01_Pelvis"]=Angle(-50.00,0.00,0.00),["ValveBiped.Bip01_Spine1"]=Angle(5.70,20.20,-19.40),["ValveBiped.Bip01_Spine2"]=Angle(0.00,0.00,-16.70),["ValveBiped.Bip01_Head1"]=Angle(27.00,11.40,70.20),["ValveBiped.Bip01_R_UpperArm"]=Angle(49.50,-27.40,45.70),["ValveBiped.Bip01_R_Forearm"]=Angle(-76.90,7.50,21.30),["ValveBiped.Bip01_R_Hand"]=Angle(0.00,0.00,29.20),["ValveBiped.Bip01_L_UpperArm"]=Angle(-19.60,-49.60,20.80),["ValveBiped.Bip01_L_Forearm"]=Angle(0.00,-74.20,0.00),["ValveBiped.Bip01_L_Hand"]=Angle(0.00,10.70,61.70),["ValveBiped.Bip01_R_Thigh"]=Angle(48.50,-15.30,41.60),["ValveBiped.Bip01_R_Calf"]=Angle(0.00,35.40,0.00),["ValveBiped.Bip01_L_Thigh"]=Angle(-26.20,-38.40,-19.00),["ValveBiped.Bip01_L_Calf"]=Angle(0.00,28.30,0.00)}}
+local kameanim2 = {Pos={["ValveBiped.Bip01_Pelvis"]=Vector(0.00,0.00,-8.20)}, Ang={["ValveBiped.Bip01_Pelvis"]=Angle(-50.00,0.00,0.00),["ValveBiped.Bip01_Spine1"]=Angle(18.40,22.90,22.00),["ValveBiped.Bip01_Spine2"]=Angle(-0.50,9.60,5.50),["ValveBiped.Bip01_Head1"]=Angle(27.00,11.40,10.20),["ValveBiped.Bip01_R_Clavicle"]=Angle(29.10,20.80,-3.30),["ValveBiped.Bip01_R_UpperArm"]=Angle(5.80,-82.70,60.70),["ValveBiped.Bip01_R_Forearm"]=Angle(0.00,0.10,0.00),["ValveBiped.Bip01_R_Hand"]=Angle(-20.40,105.50,9.10),["ValveBiped.Bip01_L_Clavicle"]=Angle(-22.10,9.50,0.10),["ValveBiped.Bip01_L_UpperArm"]=Angle(-76.90,0.00,-26.00),["ValveBiped.Bip01_L_Forearm"]=Angle(0.00,-45.80,0.00),["ValveBiped.Bip01_L_Hand"]=Angle(0.00,97.20,-12.10),["ValveBiped.Bip01_R_Thigh"]=Angle(48.50,-15.30,41.60),["ValveBiped.Bip01_R_Calf"]=Angle(0.00,35.40,0.00),["ValveBiped.Bip01_L_Thigh"]=Angle(-26.20,-38.40,-19.00),["ValveBiped.Bip01_L_Calf"]=Angle(0.00,28.30,0.00)}}
+
+local energymat = material.create("VertexLitGeneric")
+energymat:setInt("$flags",201328704+8192)
+energymat:setVector("$color2",Vector(0.8,1.0,1.0))
+
+function kamehameha:initialize(owner)
+    self.owner = owner
+    self.anim = playeranim:new(owner, function() self:think() end)
+    --self.anim:findKeyFrames(true)
+
+    bass.loadURL("https://dl.dropboxusercontent.com/s/0cyidzhqmj2d56u/kame_fire.mp3","3d noblock noplay", function(snd)
+        self.firesound = snd
+        snd:setFade(1000, 200000)
+    end)
+    bass.loadURL("https://dl.dropboxusercontent.com/s/jrrevho20qug4xm/kame_wave.mp3","3d noblock noplay", function(snd)
+        self.wavesound = snd
+        snd:setFade(1000, 200000)
+    end)
+    bass.loadURL("https://dl.dropboxusercontent.com/s/9g2z8an5x1r2s5k/kame_hit.mp3","3d noblock noplay", function(snd)
+        self.hitsound = snd
+        snd:setFade(1000, 200000)
+    end)
+    
+    self.chargemitter = particle.create(owner:getPos(), false)
+    self.chargelight = light.create(Vector(), 1024, 5, Color(70, 150, 200))
+    self.chargeball = holograms.create(chip():getPos(), Angle(), "models/starfall/holograms/sphere.mdl", Vector(1))
+    self.chargeball:setMaterial("!"..energymat:getName())
+    self.chargeball:setNoDraw(true)
+    self.handbonerid = owner:lookupBone("ValveBiped.Bip01_R_Hand")
+    self.handbonelid = owner:lookupBone("ValveBiped.Bip01_L_Hand")
+    self.think = self.nothink
+    self.stop = self.nostop
+    
+    self.dustemitter = particle.create(owner:getPos(), false)
+end
+
+function kamehameha:nothink()
+end
+function kamehameha:nostop()
+end
+
+function kamehameha:charge()
+    self.firing = false
+    self.think = self.chargethink
+    self.stop = self.stopcharge
+    self.firesound:setVolume(1)
+    self.firesound:setTime(0)
+    self.firesound:play()
+    self.charget = timer.curtime()
+    self.chargeball:setNoDraw(false)
+    self.chargeball:setColor(Color(255,255,255,255))
+end
+
+function kamehameha:stopcharge()
+    -- Todo play discharge sound
+    self.firesound:setVolume(0)
+    self.chargeball:setNoDraw(true)
+    self.think = self.nothink
+    self.animating = true
+    self.anim:animate({Pos={},Ang={}}, 1, "sineinout", function()
+        self.animating = false
+    end)
+end
+
+function kamehameha:chargethink()
+    local t = timer.curtime()
+    local chargetime = t - self.charget
+    local handr = self.owner:getBonePosition(self.handbonerid)
+    local handl = self.owner:getBonePosition(self.handbonelid)
+    local ballpos = (handr + handl)*0.5
+    local increase = math.clamp(chargetime, 0, 4)
+    local intensity = math.sin(t*80)+math.sin(t*21)+3+increase
+
+    self.firesound:setPos(ballpos)
+    self.chargeball:setPos(ballpos)
+    self.chargeball:setScale(Vector(intensity*0.7))
+
+    self.chargelight:setPos(ballpos)
+    self.chargelight:setBrightness(intensity*0.5)
+    self.chargelight:draw()
+    
+    self.chargemitter:setPos(ballpos)
+    if self.chargemitter:getParticlesLeft()>0 and math.random()>0.7 then
+        local pos = Vector(math.random()-0.5, math.random()-0.5, math.random()-0.5):getNormalized()
+        if pos[1]~=pos[1] then pos = Vector(1,0,0) end
+        pos = pos * 7
+        local p = self.chargemitter:add(lightmtl, ballpos+pos, 4, 1, 4, 1, 255, 255, 1)
+        p:setGravity(-pos)
+    end
+
+    self.dustemitter:setPos(self.owner:getPos())
+    if self.dustemitter:getParticlesLeft()>0 and math.random()>0.6 and self.owner:isOnGround() then
+        local th = math.random()*2*math.pi
+        local pos = Vector(math.cos(th),math.sin(th),0)*40
+        local p = self.dustemitter:add(dustmtl, self.owner:getPos()+pos, 20, 20, 20, 20, 255, 255, 1)
+        p:setVelocity(pos+Vector(0,0,50))
+        p:setGravity(pos+Vector(0,0,-50))
+        p:setAirResistance(10)
+    end
+
+    if chargetime>6.2 and not self.animating then
+        self.animating = true
+        self.anim:animate(kameanim2, 0.3, "sineinout", function()
+            self.animating = false
+            self:fire()
+        end)
+    end
+end
+
+function kamehameha:fire()
+    self.firing = true
+    self.think = self.nothink
+    self.stop = self.stopfire
+
+    self.ballpos = self.owner:getShootPos()+self.owner:getAimVector()*50
+    self.ballvel = self.owner:getAimVector()*2200
+    self.chargeball:setPos(self.ballpos)
+    
+    self.wavesound:setVolume(1)
+    self.wavesound:setLooping(true)
+    self.wavesound:setTime(0)
+    self.wavesound:play()
+    self.wavesound:setPos(self.ballpos)
+
+    self.firethink = self.fireprojectile
+    hook.add("think","kameha",function() self:firethink() end)
+end
+
+function kamehameha:stopfire()
+    self.animating = true
+    self.anim:animate({Pos={},Ang={}}, 1, "sineinout", function()
+        self.animating = false
+    end)
+end
+
+function kamehameha:fireprojectile()
+    local t = timer.curtime()
+    local dt = timer.frametime()
+    self.ballvel = self.ballvel + Vector(0,0,-50*dt)
+    self.ballpos = self.ballpos + self.ballvel*dt
+    
+    local intensity = math.sin(t*80)+math.sin(t*21)+3
+    
+    self.chargelight:setPos(self.ballpos)
+    self.chargelight:setBrightness(intensity*3)
+    self.chargelight:draw()
+    
+    self.wavesound:setPos(self.ballpos)
+    self.chargeball:setPos(self.ballpos)
+    self.chargeball:setAngles(self.ballvel:getAngle())
+    local scale = 70+intensity*10
+    self.chargeball:setScale(Vector(100,scale,scale))
+    
+    self.chargemitter:setPos(self.ballpos)
+    if self.chargemitter:getParticlesLeft()>0 and math.random()>0.8 then
+        local pos = Vector(math.random()-0.5, math.random()-0.5, math.random()-0.5)*20
+        local p = self.chargemitter:add(lightmtl, self.ballpos+pos, 8, 1, 8, 1, 255, 255, 4)
+        p:setGravity(Vector(0,0,-20))
+    end
+    
+    local tr = trace.traceHull(self.ballpos, self.ballpos, Vector(-40), Vector(40), self.owner)
+    if tr.Hit then
+        self.hitsound:setPos(self.ballpos)
+        self.hitsound:setVolume(1)
+        self.hitsound:setTime(0)
+        self.hitsound:play()
+
+        self.wavesound:setLooping(false)
+        self.wavesound:setVolume(0)
+
+        self.firethink = self.explosionthink
+        self.explosiont = timer.curtime()
+    end
+end
+
+function kamehameha:explosionthink()
+    local explodet = timer.curtime() - self.explosiont
+
+    local t = 1-math.exp(-explodet*2)
+    local scale = 9000*t
+    self.chargeball:setScale(Vector(scale))
+    self.chargeball:setColor(Color(255,255,255,math.max(210-explodet*(210/5),0)))
+
+    if explodet>5 then
+        self.chargeball:setNoDraw(true)
+        self.firing = false
+        hook.remove("think","kameha")
+    end
+end
+
+function kamehameha:setEnabled(enable)
+    if not self.firesound then return end
+    if self.animating then
+        hook.add("think","setenable",function() if not self.animating then self:setEnabled(enable) hook.remove("think","setenable") end end)
+        return
+    end
+    if enable then
+        if not self.firing then
+            self.animating = true
+            self.anim:animate(kameanim1, 1, "sineinout", function()
+                self.animating = false
+                self:charge()
+            end)
+        end
+    else
+        self:stop()
+    end
+end
+
+local mykamehameha = kamehameha:new(owner())
+net.receive("kamehame",function()
+    mykamehameha:setEnabled(net.readBool())
+end)
+
+hook.add("removed","",function()
+    for k, v in pairs(mykamehameha.anim.boneStartPositions) do
+        mykamehameha.owner:manipulateBonePosition(k,Vector())
+    end
+    for k, v in pairs(mykamehameha.anim.boneStartAngles) do
+        mykamehameha.owner:manipulateBoneAngles(k,Angle())
+    end
+end)
+
+end
