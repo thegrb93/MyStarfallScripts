@@ -4,6 +4,7 @@
 --@include libs/flux.txt
 
 -- This lib also requires 'flux'. Get it here https://github.com/rxi/flux/blob/master/flux.lua
+-- Make sure you also delete these lines to make it work with starfall: https://github.com/rxi/flux/blob/master/flux.lua#L57-L60
 
 -- 1. Getting keyframes easily
 --    Use pac3 to pose your playermodel then copy the keyframe text using the following code:
