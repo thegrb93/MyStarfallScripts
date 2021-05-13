@@ -27,7 +27,7 @@ local flux = require("libs/flux.txt")
 local animator = class("animator")
 
 local index = 0
-function animator:initialize(owner, onthink)
+function animator:initialize(owner)
     self.owner = owner
     self.boneStartPositions = {}
     self.boneEndPositions = {}
@@ -45,10 +45,6 @@ function animator:initialize(owner, onthink)
     self.t = {0}
     self.index = index
     index = index + 1
-    self.think = self.staticthink
-    self.onthink = onthink
-    hook.add("hologrammatrix","plyanimate"..self.index,function() self:think() end)
-    --hook.add("think","plyanimate"..self.index,function() self:think() end)
 end
 
 function animator:findKeyFrames(enable)
@@ -97,7 +93,7 @@ function animator:onComplete(oncomplete)
     self.boneEndAngles = {}
     self.boneDeltaAngles = {}
     self.tween = nil
-    self.think = self.staticthink
+    hook.remove("think","plyanimate"..self.index)
 
     if oncomplete then
         local ok, err = pcall(oncomplete)
@@ -140,7 +136,7 @@ function animator:animate(keyframe, duration, ease, oncomplete)
     self.tween = self.flux:to(self.t, duration, {1}):ease(ease):oncomplete(function()
         self:onComplete(oncomplete)
     end)
-    self.think = self.tweenthink
+    hook.add("think","plyanimate"..self.index,function() self:think() end)
 end
 
 function animator:stop()
@@ -148,17 +144,7 @@ function animator:stop()
     self:onComplete()
 end
 
-function animator:staticthink()
-    for k, s in pairs(self.boneStartPositions) do
-        self.owner:manipulateBonePosition(k, s)
-    end
-    for k, s in pairs(self.boneStartAngles) do
-        self.owner:manipulateBoneAngles(k, s)
-    end
-    if self.onthink then self.onthink() end
-end
-
-function animator:tweenthink()
+function animator:think()
     self.flux:update(timer.frametime())
     local t = self.t[1]
 
@@ -171,7 +157,6 @@ function animator:tweenthink()
         rot = rot * self.boneStartMatrices[k]
         self.owner:manipulateBoneAngles(k, rot:getAngles())
     end
-    if self.onthink then self.onthink() end
 end
 
 return animator

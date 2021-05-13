@@ -61,7 +61,7 @@ energymat:setVector("$color2",Vector(0.8,1.0,1.0))
 
 function kamehameha:initialize(owner)
     self.owner = owner
-    self.anim = playeranim:new(owner, function() self:think() end)
+    self.anim = playeranim:new(owner)
     --self.anim:findKeyFrames(true)
 
     bass.loadURL("https://dl.dropboxusercontent.com/s/0cyidzhqmj2d56u/kame_fire.mp3","3d noblock noplay", function(snd)
@@ -84,21 +84,17 @@ function kamehameha:initialize(owner)
     self.chargeball:setNoDraw(true)
     self.handbonerid = owner:lookupBone("ValveBiped.Bip01_R_Hand")
     self.handbonelid = owner:lookupBone("ValveBiped.Bip01_L_Hand")
-    self.think = self.nothink
-    self.stop = self.nostop
     
     self.dustemitter = particle.create(owner:getPos(), false)
-end
-
-function kamehameha:nothink()
-end
-function kamehameha:nostop()
+    self.stop = self.stopfire
 end
 
 function kamehameha:charge()
     self.firing = false
     self.think = self.chargethink
     self.stop = self.stopcharge
+    hook.add("think","kameha",function() self:think() end)
+
     self.firesound:setVolume(1)
     self.firesound:setTime(0)
     self.firesound:play()
@@ -111,7 +107,8 @@ function kamehameha:stopcharge()
     -- Todo play discharge sound
     self.firesound:setVolume(0)
     self.chargeball:setNoDraw(true)
-    self.think = self.nothink
+    hook.remove("think","kameha")
+
     self.animating = true
     self.anim:animate({Pos={},Ang={}}, 1, "sineinout", function()
         self.animating = false
@@ -165,8 +162,6 @@ end
 
 function kamehameha:fire()
     self.firing = true
-    self.think = self.nothink
-    self.stop = self.stopfire
 
     self.ballpos = self.owner:getShootPos()+self.owner:getAimVector()*50
     self.ballvel = self.owner:getAimVector()*2200
@@ -178,8 +173,8 @@ function kamehameha:fire()
     self.wavesound:play()
     self.wavesound:setPos(self.ballpos)
 
-    self.firethink = self.fireprojectile
-    hook.add("think","kameha",function() self:firethink() end)
+    self.think = self.fireprojectile
+    self.stop = self.stopfire
 end
 
 function kamehameha:stopfire()
@@ -224,7 +219,7 @@ function kamehameha:fireprojectile()
         self.wavesound:setLooping(false)
         self.wavesound:setVolume(0)
 
-        self.firethink = self.explosionthink
+        self.think = self.explosionthink
         self.explosiont = timer.curtime()
     end
 end
