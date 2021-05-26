@@ -264,6 +264,7 @@ net.receive("kamehame",function()
 end)
 
 hook.add("removed","",function()
+    mykamehameha.anim:stop()
     for k, v in pairs(mykamehameha.anim.boneStartPositions) do
         mykamehameha.owner:manipulateBonePosition(k,Vector())
     end
