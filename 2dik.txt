@@ -1,0 +1,53 @@
+--@name 2DIK
+--@author Sparky
+--@server
+
+local arm = class("arm")
+
+function arm:initialize()
+    local basescale = 1
+    self.base = holograms.create(chip():getPos(), chip():getAngles(), "models/props_c17/oildrum001.mdl", Vector(0.2,0.2,basescale))
+    self.base:setParent(chip())
+    self.baselen = self.base:obbSize()[3]*basescale
+    
+    local link1scale = 1.5
+    self.link1 = holograms.create(self.base:getPos()+Vector(0,0,self.baselen), self.base:getAngles(), "models/props_c17/oildrum001.mdl", Vector(0.2,0.2,link1scale))
+    self.link1:setParent(self.base)
+    self.link1len = self.link1:obbSize()[3]*link1scale
+    
+    local link2scale = 1.5
+    self.link2 = holograms.create(self.link1:getPos()+Vector(0,0,self.link1len), self.link1:getAngles(), "models/props_c17/oildrum001.mdl", Vector(0.2,0.2,link2scale))
+    self.link2:setParent(self.link1)
+    self.link2len = self.link2:obbSize()[3]*link2scale
+    
+    self.target = prop.create(chip():getPos()+Vector(80,0,40), Angle(), "models/props_junk/PopCan01a.mdl", true)
+
+    hook.add("think",table.address(self),function() self:think() end)
+end
+
+function arm:getLinkYaw()
+    return math.deg(math.atan2(self.forward[2], self.forward[1]))
+end
+
+function arm:getLinkPitches()
+    local y, x = self.forward:dot(self.targetPos), self.targetPos[3]
+    local L1, L2 = self.link1len, self.link2len
+    
+    local q2 = math.acos(math.clamp((self.targetPos:getLengthSqr() - L1^2 - L2^2)/(2*L1*L2), -1, 1))
+    local q1 = math.atan2(y,x) - math.atan2(L2*math.sin(q2), L1 + L2*math.cos(q2))
+    
+    return math.deg(q1), math.deg(q2)
+end
+
+function arm:think()
+    self.targetPos = self.base:worldToLocal(self.target:getPos()) - Vector(0,0,self.baselen)
+    self.forward = self.targetPos:clone():setZ(0)
+    self.forward:normalize()
+    
+    local y = self:getLinkYaw()
+    local p1, p2 = self:getLinkPitches()
+    self.link1:setAngles(self.base:localToWorldAngles(Angle(p1, y, 0)))
+    self.link2:setAngles(self.link1:localToWorldAngles(Angle(p2, 0, 0)))
+end
+
+arm:new()
