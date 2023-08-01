@@ -90,13 +90,13 @@ local function cubicPos(spline, t3, t2, t)
     return spline[1]*t3 + spline[2]*t2 + spline[3]*t + spline[4]
 end
 
-local function cubicVel(spline, t2, t, rate)
-    return spline[5]*(t2 * rate) + spline[6]*(t * rate) + spline[3] * rate
+local function cubicVel(spline, t2, t)
+    return spline[5]*t2 + spline[6]*t + spline[3]
 end
 
 local function computeCubics(inputPos, outputVel, outputSplines, looped)
-    local null = inputPos[1]*0
     if #inputPos < 2 then
+        local null = inputPos[1]*0
         outputVel[1] = null
         outputSplines[1] = {null, null, null, inputPos[1], null, null}
     else
@@ -534,9 +534,9 @@ function ragdollanimplayer:apply(drivers, dt)
         if weight>0 then
             v:add(
                 cubicPos(self.bonepos[k][i], ifrac3, ifrac2, ifrac),
-                cubicVel(self.bonepos[k][i], ifrac2, ifrac, self.rate),
+                cubicVel(self.bonepos[k][i], ifrac2, ifrac) * self.rate,
                 cubicPos(self.boneang[k][i], ifrac3, ifrac2, ifrac),
-                cubicVel(self.boneang[k][i], ifrac2, ifrac, self.rate),
+                cubicVel(self.boneang[k][i], ifrac2, ifrac) * self.rate,
                 weight
             )
         end
