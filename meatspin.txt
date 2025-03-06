@@ -1,0 +1,109 @@
+--@name Meatspin
+--@author Sparky
+--@client
+--@include https://raw.githubusercontent.com/thegrb93/MyStarfallScripts/refs/heads/master/libs/gifspritesheet.txt as gifspritesheet.txt
+
+local gifToSpritesheet = require("gifspritesheet.txt")
+
+render.createRenderTarget("meatspin")
+local meatMat = material.create("VertexLitGeneric")
+meatMat:setTextureRenderTarget("$basetexture","meatspin")
+
+local meatspin = class("meatspin")
+function meatspin:initialize()
+    self.holo = holograms.create(Vector(), Angle(), "models/hunter/blocks/cube1x1x1.mdl", Vector(3,3,0.01))
+    
+    local pos = chip():getPos()
+    local normal = chip():getUp()
+    local up
+    if normal==Vector(0,0,1) then
+        up = Vector(0,1,0)
+    else
+        up = (Vector(0,0,1) - normal*normal[3]):getNormalized()
+    end
+    local orientation = Matrix()
+    orientation:setForward(-up)
+    orientation:setRight(normal:cross(up))
+    orientation:setUp(normal)
+    orientation:setTranslation(pos+normal*5)
+
+    self.holo:setPos(orientation:getTranslation())
+    self.holo:setAngles(orientation:getAngles())
+    self.holo:setParent(chip())
+    self.holo:suppressEngineLighting(true)
+    self.holo:setMaterial("!"..meatMat:getName())
+    self.draw = self.drawLoading
+    self.spritesheet = false
+    self.music = false
+    hook.add("renderoffscreen",table.address(self),function() self:draw() end)
+    self:loadGif()
+    self:loadMusic()
+    self.spins = 0
+end
+
+function meatspin:drawLoading()
+    if self.spritesheet and self.music then
+        self.music:play()
+        self.draw = self.drawReady
+        return self:draw()
+    end
+    render.selectRenderTarget("meatspin")
+    render.clear()
+
+    local loadingScale = Matrix()
+    loadingScale:setScale(Vector(15,15,1))
+    render.pushMatrix(loadingScale)
+
+    self.loadingi = ((self.loadingi or 0) % 3) + 0.05
+    render.drawText(0.1,0.1,"Loading"..string.rep(".",self.loadingi))
+
+    render.popMatrix()
+end
+
+function meatspin:drawReady()
+    local spritesheet = self.spritesheet
+    local w, h = spritesheet.framew, spritesheet.frameh
+    local dt = timer.frametime()
+
+    render.selectRenderTarget("meatspin")
+    render.clear()
+    local sw, sh = render.getResolution()
+    local scale
+    if sw*h<sh*w then scale = sw / w else scale = sh / h end
+    local w, h = w*scale, h*scale
+    spritesheet:draw(sw*0.5 - w*0.5, sh*0.5 - h*0.5, w, h, dt)
+    
+    local spinscale = Matrix()
+    spinscale:setScale(Vector(5,5,1))
+    render.pushMatrix(spinscale)
+    self.spins = self.spins + dt*2.1333333
+    render.drawText(1,175,"You've sat through "..math.floor(self.spins).." spins!")
+    if self.spins > 50 then
+        render.drawText(15,188,"You are officially gay :-)")
+    end
+    render.popMatrix()
+end
+
+
+function meatspin:loadGif()
+    http.get("https://i.gyazo.com/7af87bdc350608228e632e865a8d23c5.gif", function(data)
+        gifToSpritesheet(data, 13, function(spritesheet)
+            spritesheet.totaldelay = 0.46875
+            for _, v in ipairs(spritesheet.frames) do v.delay = 0.0390625 end
+            self.spritesheet = spritesheet
+        end)
+    end)
+end
+
+function meatspin:loadMusic()
+    bass.loadURL("https://dl.dropboxusercontent.com/scl/fi/xtu30n1jhuso78xhiuw4y/spin-round.mp3?rlkey=2x83pghiww9a3r1c2801xzm7m&st=68r7me3a&dl=0","3d noblock noplay",function(s)
+        if not s then self:startMusic() return end
+        self.music = s
+        s:setLooping(true)
+        s:setFade(0, 500)
+        hook.add("think",table.address(self),function() if self.holo:isValid() then s:setPos(self.holo:getPos()) end end)
+    end)
+end
+
+meatspin:new()
+
