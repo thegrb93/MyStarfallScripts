@@ -96,11 +96,11 @@ function meatspin:loadGif()
 end
 
 function meatspin:loadMusic()
-    bass.loadURL("https://dl.dropboxusercontent.com/scl/fi/xtu30n1jhuso78xhiuw4y/spin-round.mp3?rlkey=2x83pghiww9a3r1c2801xzm7m&st=68r7me3a&dl=0","3d noblock noplay",function(s)
+    bass.loadURL("https://github.com/thegrb93/MyStarfallScripts/raw/refs/heads/master/resource/meatspin.mp3","3d noblock noplay",function(s)
         if not s then self:startMusic() return end
         self.music = s
         s:setLooping(true)
-        s:setFade(0, 500)
+        s:setFade(0, 3000)
         hook.add("think",table.address(self),function() if self.holo:isValid() then s:setPos(self.holo:getPos()) end end)
     end)
 end
