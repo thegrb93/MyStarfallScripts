@@ -86,7 +86,7 @@ end
 
 
 function meatspin:loadGif()
-    http.get("https://i.gyazo.com/7af87bdc350608228e632e865a8d23c5.gif", function(data)
+    http.get("<link to meatspin.gif>", function(data)
         gifToSpritesheet(data, 13, function(spritesheet)
             spritesheet.totaldelay = 0.46875
             for _, v in ipairs(spritesheet.frames) do v.delay = 0.0390625 end
